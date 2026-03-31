@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { EnterprisesList } from "@/components/enterprises-list"
 import { EnterpriseDetails } from "@/components/enterprise-details"
 import { CreateEnterpriseDialog, type CreateEnterpriseData } from "@/components/create-enterprise-dialog"
@@ -115,7 +116,13 @@ export function EnterprisesPage() {
       const numericId = Number(enterprise.id)
       return Number.isFinite(numericId) ? Math.max(max, numericId) : max
     }, 0)
-    const newId = String(maxId + 1).padStart(5, "0")
+    let nextNumericId = maxId + 1
+    let newId = String(nextNumericId).padStart(5, "0")
+    const existingIds = new Set(enterprises.map((enterprise) => enterprise.id))
+    while (existingIds.has(newId)) {
+      nextNumericId += 1
+      newId = String(nextNumericId).padStart(5, "0")
+    }
     const today = new Date()
     const createdAt = data.createdAt.day && data.createdAt.month && data.createdAt.year
       ? `${data.createdAt.day}/${data.createdAt.month}/${data.createdAt.year}`
@@ -156,9 +163,6 @@ export function EnterprisesPage() {
       grossYieldCurrentSeason: parseNumber(data.grossYieldCurrentSeason),
     }
 
-    setEnterprises((prev) => [...prev, newEnterprise])
-    setSelectedId(newId)
-
     try {
       await saveEnterprise(newEnterprise)
       const assetUpdates: Partial<Enterprise> = {}
@@ -172,12 +176,15 @@ export function EnterprisesPage() {
 
       if (Object.keys(assetUpdates).length > 0) {
         await updateEnterprise(newId, assetUpdates)
-        setEnterprises((prev) =>
-          prev.map((e) => (e.id === newId ? { ...e, ...assetUpdates } : e))
-        )
+        newEnterprise.logo = assetUpdates.logo ?? newEnterprise.logo
+        newEnterprise.banner = assetUpdates.banner ?? newEnterprise.banner
       }
+      setEnterprises((prev) => [...prev, newEnterprise])
+      setSelectedId(newId)
+      toast.success("Предприятие создано")
     } catch (error) {
       console.warn("Failed to create enterprise in Firestore.", error)
+      toast.error("Не удалось создать предприятие. Проверьте Firestore Rules.")
     }
   }
 
