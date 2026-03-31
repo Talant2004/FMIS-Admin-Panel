@@ -111,7 +111,11 @@ export function EnterprisesPage() {
       return Number.isFinite(normalized) ? normalized : 0
     }
 
-    const newId = String(enterprises.length + 1).padStart(5, "0")
+    const maxId = enterprises.reduce((max, enterprise) => {
+      const numericId = Number(enterprise.id)
+      return Number.isFinite(numericId) ? Math.max(max, numericId) : max
+    }, 0)
+    const newId = String(maxId + 1).padStart(5, "0")
     const today = new Date()
     const createdAt = data.createdAt.day && data.createdAt.month && data.createdAt.year
       ? `${data.createdAt.day}/${data.createdAt.month}/${data.createdAt.year}`

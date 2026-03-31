@@ -4,6 +4,7 @@ import { useState } from "react"
 import { MapPin, Upload } from "lucide-react"
 import area from "@turf/area"
 import centroid from "@turf/centroid"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ interface CreateEnterpriseDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   masterCollections: MasterCollection[]
-  onSubmit: (data: CreateEnterpriseData) => void
+  onSubmit: (data: CreateEnterpriseData) => void | Promise<void>
 }
 
 export interface CreateEnterpriseData {
@@ -165,12 +166,23 @@ export function CreateEnterpriseDialog({
 }: CreateEnterpriseDialogProps) {
   const [formData, setFormData] = useState<CreateEnterpriseData>(getDefaultFormData)
   const [step, setStep] = useState<1 | 2>(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = () => {
-    onSubmit(formData)
-    setFormData(getDefaultFormData())
-    setStep(1)
-    onOpenChange(false)
+  const handleSubmit = async () => {
+    if (!formData.fullName.trim()) {
+      toast.error("Введите название предприятия")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await onSubmit(formData)
+      setFormData(getDefaultFormData())
+      setStep(1)
+      onOpenChange(false)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
   const openMap = () => {
     const { x, y } = formData.referencePoint
@@ -609,8 +621,8 @@ export function CreateEnterpriseDialog({
             <div className="flex gap-2">
               {step === 1 ? (
                 <>
-                  <Button variant="outline" onClick={handleSubmit}>
-                    Пропустить
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    Отмена
                   </Button>
                   <Button
                     onClick={() => setStep(2)}
@@ -624,8 +636,12 @@ export function CreateEnterpriseDialog({
                   <Button variant="outline" onClick={() => setStep(1)}>
                     Назад
                   </Button>
+                  <Button variant="outline" onClick={handleSubmit} disabled={isSubmitting}>
+                    Пропустить
+                  </Button>
                   <Button
                     onClick={handleSubmit}
+                    disabled={isSubmitting}
                     className="bg-green-600 text-white hover:bg-green-700"
                   >
                     Создать предприятие
