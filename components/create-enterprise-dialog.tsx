@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { MapPin, Upload } from "lucide-react"
+import area from "@turf/area"
+import centroid from "@turf/centroid"
 import {
   Dialog,
   DialogContent,
@@ -39,6 +41,7 @@ export interface CreateEnterpriseData {
   address: string
   createdAt: { day: string; month: string; year: string }
   referencePoint: { x: string; y: string }
+  geojson?: GeoJSON.FeatureCollection
   logo?: File
   banner?: File
   totalFieldArea: string
@@ -78,6 +81,7 @@ const getDefaultFormData = (): CreateEnterpriseData => ({
   address: "",
   createdAt: { day: "", month: "", year: "" },
   referencePoint: { x: "", y: "" },
+  geojson: undefined,
   logo: undefined,
   banner: undefined,
   totalFieldArea: "0",
@@ -180,6 +184,36 @@ export function CreateEnterpriseDialog({
         "_blank",
         "noopener,noreferrer"
       )
+    }
+  }
+
+  const handleGeoJsonUpload = async (file?: File) => {
+    if (!file) return
+    const text = await file.text()
+    try {
+      const parsed = JSON.parse(text) as GeoJSON.FeatureCollection
+      const polygonFeatures = parsed.features.filter(
+        (feature) => feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+      )
+      const totalAreaM2 = polygonFeatures.reduce((sum, feature) => sum + area(feature), 0)
+      const totalAreaHa = totalAreaM2 / 10000
+      const center = centroid(parsed)
+      const centerCoords = center.geometry.coordinates
+      const fieldsCount = polygonFeatures.length
+
+      setFormData((prev) => ({
+        ...prev,
+        geojson: parsed,
+        referencePoint: {
+          x: String(centerCoords[1] ?? 0),
+          y: String(centerCoords[0] ?? 0),
+        },
+        totalFieldArea: totalAreaHa.toFixed(2),
+        fieldsCount: String(fieldsCount),
+        avgFieldSize: fieldsCount > 0 ? (totalAreaHa / fieldsCount).toFixed(2) : "0",
+      }))
+    } catch {
+      // Ignore invalid JSON parse and keep previous state.
     }
   }
 
@@ -311,43 +345,36 @@ export function CreateEnterpriseDialog({
             </div>
 
             <div className="grid grid-cols-[140px_1fr] items-start gap-3">
-              <Label className="text-sm text-foreground pt-2">
-                Опорная точка (для метеостанций)
-              </Label>
+              <Label className="text-sm text-foreground pt-2">Загрузка GEOJSON</Label>
               <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="X"
-                    value={formData.referencePoint.x}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        referencePoint: { ...prev.referencePoint, x: e.target.value },
-                      }))
-                    }
-                    className="h-9"
-                  />
-                  <Input
-                    placeholder="Y"
-                    value={formData.referencePoint.y}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        referencePoint: { ...prev.referencePoint, y: e.target.value },
-                      }))
-                    }
-                    className="h-9"
-                  />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => document.getElementById("create-geojson-input")?.click()}
+                >
+                  {formData.geojson ? "Заменить GEOJSON" : "Загрузить GEOJSON"}
+                </Button>
+                <input
+                  id="create-geojson-input"
+                  type="file"
+                  accept=".json,.geojson,application/geo+json,application/json"
+                  className="hidden"
+                  onChange={(e) => handleGeoJsonUpload(e.target.files?.[0])}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={formData.referencePoint.x} readOnly className="h-9" placeholder="Опорная X" />
+                  <Input value={formData.referencePoint.y} readOnly className="h-9" placeholder="Опорная Y" />
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 text-xs text-muted-foreground"
                   onClick={openMap}
-                  disabled={!formData.referencePoint.x && !formData.referencePoint.y && !formData.address}
+                  disabled={!formData.referencePoint.x && !formData.referencePoint.y}
                 >
                   <MapPin className="mr-1 h-3 w-3" />
-                  На карте
+                  Опорная точка на карте
                 </Button>
               </div>
             </div>

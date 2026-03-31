@@ -131,6 +131,7 @@ export function EnterprisesPage() {
         x: parseFloat(data.referencePoint.x) || 0,
         y: parseFloat(data.referencePoint.y) || 0,
       },
+      geojson: data.geojson,
       tags: [],
       isActive: !data.isInactive,
       totalFieldArea: parseNumber(data.totalFieldArea),

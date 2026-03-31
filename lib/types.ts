@@ -9,6 +9,7 @@ export interface Enterprise {
   iban: string
   createdAt: string
   referencePoint: { x: number; y: number }
+  geojson?: GeoJSON.FeatureCollection
   logo?: string
   favicon?: string
   banner?: string
