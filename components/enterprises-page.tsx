@@ -17,6 +17,16 @@ import {
 import { uploadEnterpriseAsset, type EnterpriseAssetField } from "@/lib/storage-enterprises"
 
 export function EnterprisesPage() {
+  const getErrorMessage = (error: unknown) => {
+    if (typeof error === "object" && error !== null) {
+      const maybeError = error as { code?: string; message?: string }
+      if (maybeError.code || maybeError.message) {
+        return [maybeError.code, maybeError.message].filter(Boolean).join(": ")
+      }
+    }
+    return "Unknown error"
+  }
+
   const [enterprises, setEnterprises] = useState<Enterprise[]>(mockEnterprises)
   const [selectedId, setSelectedId] = useState<string | null>(mockEnterprises[0]?.id || null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -64,6 +74,7 @@ export function EnterprisesPage() {
       await updateEnterpriseActive(id, active)
     } catch (error) {
       console.warn("Failed to update enterprise status in Firestore.", error)
+      toast.error(`Ошибка обновления статуса: ${getErrorMessage(error)}`)
       setEnterprises((prev) =>
         prev.map((e) => (e.id === id ? { ...e, isActive: !active } : e))
       )
@@ -80,6 +91,7 @@ export function EnterprisesPage() {
         await removeEnterprise(id)
       } catch (error) {
         console.warn("Failed to delete enterprise from Firestore.", error)
+        toast.error(`Ошибка удаления: ${getErrorMessage(error)}`)
       }
     }
   }
@@ -90,6 +102,7 @@ export function EnterprisesPage() {
       await updateEnterprise(id, updates)
     } catch (error) {
       console.warn("Failed to update enterprise in Firestore.", error)
+      toast.error(`Ошибка сохранения: ${getErrorMessage(error)}`)
     }
   }
 
@@ -103,6 +116,7 @@ export function EnterprisesPage() {
       await handleUpdateEnterprise(id, { [field]: downloadUrl })
     } catch (error) {
       console.warn("Failed to upload enterprise asset.", error)
+      toast.error(`Ошибка загрузки файла: ${getErrorMessage(error)}`)
     }
   }
 
@@ -184,7 +198,7 @@ export function EnterprisesPage() {
       toast.success("Предприятие создано")
     } catch (error) {
       console.warn("Failed to create enterprise in Firestore.", error)
-      toast.error("Не удалось создать предприятие. Проверьте Firestore Rules.")
+      toast.error(`Не удалось создать предприятие: ${getErrorMessage(error)}`)
     }
   }
 
