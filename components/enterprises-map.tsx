@@ -75,6 +75,21 @@ export function EnterprisesMap({
     ? [selected.referencePoint.x, selected.referencePoint.y]
     : [43.238949, 76.945465]
 
+  const resolveFieldId = (
+    enterprise: Enterprise,
+    feature?: GeoJSON.Feature
+  ): string => {
+    if (!feature) return ""
+    const props = (feature.properties as Record<string, unknown> | null) ?? {}
+    if (props.fieldId) return String(props.fieldId)
+
+    const index = enterprise.geojson?.features.findIndex((item) => item === feature) ?? -1
+    if (index >= 0) {
+      return `${enterprise.id}-F${String(index + 1).padStart(3, "0")}`
+    }
+    return ""
+  }
+
   return (
     <MapContainer center={center} zoom={8} className="h-full w-full">
       <TileLayer
@@ -96,7 +111,7 @@ export function EnterprisesMap({
               data={enterprise.geojson}
               style={(feature) => {
                 const props = feature?.properties as Record<string, unknown> | null
-                const currentFieldId = String(props?.fieldId ?? "")
+                const currentFieldId = resolveFieldId(enterprise, feature)
                 const isSelectedField =
                   enterprise.id === selectedId && selectedFieldId && currentFieldId === selectedFieldId
                 const isSelectedEnterprise = enterprise.id === selectedId
@@ -131,7 +146,7 @@ export function EnterprisesMap({
                 const enterpriseName = String(
                   props?.enterpriseName ?? enterprise.name
                 )
-                const fieldId = String(props?.fieldId ?? "Без ID")
+                const fieldId = resolveFieldId(enterprise, feature) || "Без ID"
                 layer.bindPopup(
                   `<div><strong>${enterpriseName}</strong><br/>Поле: ${fieldId}</div>`
                 )
