@@ -68,6 +68,7 @@ export default function MapPage() {
               selectedId={selectedId}
               zoomToEnterpriseId={zoomToEnterpriseId}
               zoomToFieldId={zoomToFieldId}
+              selectedFieldId={zoomToFieldId}
               zoomRequestToken={zoomRequestToken}
             />
           </div>

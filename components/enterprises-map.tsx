@@ -12,6 +12,7 @@ interface EnterprisesMapProps {
   selectedId: string | null
   zoomToEnterpriseId?: string | null
   zoomToFieldId?: string | null
+  selectedFieldId?: string | null
   zoomRequestToken?: number
 }
 
@@ -66,6 +67,7 @@ export function EnterprisesMap({
   selectedId,
   zoomToEnterpriseId,
   zoomToFieldId,
+  selectedFieldId,
   zoomRequestToken,
 }: EnterprisesMapProps) {
   const selected = enterprises.find((item) => item.id === selectedId) ?? enterprises[0]
@@ -90,7 +92,40 @@ export function EnterprisesMap({
         <div key={enterprise.id}>
           {enterprise.geojson ? (
             <GeoJSON
+              key={`${enterprise.id}-${selectedFieldId ?? "none"}`}
               data={enterprise.geojson}
+              style={(feature) => {
+                const props = feature?.properties as Record<string, unknown> | null
+                const currentFieldId = String(props?.fieldId ?? "")
+                const isSelectedField =
+                  enterprise.id === selectedId && selectedFieldId && currentFieldId === selectedFieldId
+                const isSelectedEnterprise = enterprise.id === selectedId
+
+                if (isSelectedField) {
+                  return {
+                    color: "#ef4444",
+                    weight: 3,
+                    fillColor: "#f97316",
+                    fillOpacity: 0.45,
+                  }
+                }
+
+                if (isSelectedEnterprise) {
+                  return {
+                    color: "#2563eb",
+                    weight: 2.5,
+                    fillColor: "#60a5fa",
+                    fillOpacity: 0.35,
+                  }
+                }
+
+                return {
+                  color: "#6b7280",
+                  weight: 1.5,
+                  fillColor: "#9ca3af",
+                  fillOpacity: 0.2,
+                }
+              }}
               onEachFeature={(feature, layer) => {
                 const props = feature.properties as Record<string, unknown> | null
                 const enterpriseName = String(

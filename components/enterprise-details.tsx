@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { MapPin, Pencil, Trash2, Upload } from "lucide-react"
+import area from "@turf/area"
+import centroid from "@turf/centroid"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -118,6 +120,7 @@ export function EnterpriseDetails({
   const faviconInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
+  const fieldsInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setDraft({
@@ -217,6 +220,60 @@ export function EnterpriseDetails({
     window.open(`https://www.google.com/maps?q=${x},${y}`, "_blank", "noopener,noreferrer")
   }
 
+  const handleFieldsUpload = async (files?: FileList | null) => {
+    if (!files || files.length === 0) return
+
+    const parsedCollections: GeoJSON.FeatureCollection[] = []
+    for (const file of Array.from(files)) {
+      const text = await file.text()
+      try {
+        const parsed = JSON.parse(text) as GeoJSON.FeatureCollection
+        if (parsed?.type === "FeatureCollection" && Array.isArray(parsed.features)) {
+          parsedCollections.push(parsed)
+        }
+      } catch {
+        // Skip invalid file and continue with valid ones.
+      }
+    }
+
+    if (parsedCollections.length === 0) {
+      toast.error("Не удалось прочитать GEOJSON файлы")
+      return
+    }
+
+    const merged: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        ...(enterprise.geojson?.features ?? []),
+        ...parsedCollections.flatMap((collection) => collection.features),
+      ],
+    }
+
+    const polygonFeatures = merged.features.filter(
+      (feature) => feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+    )
+    const totalAreaM2 = polygonFeatures.reduce((sum, feature) => sum + area(feature), 0)
+    const totalAreaHa = totalAreaM2 / 10000
+    const fieldsCount = polygonFeatures.length
+    const center = centroid(merged).geometry.coordinates
+
+    try {
+      await onUpdateEnterprise(enterprise.id, {
+        geojson: merged,
+        totalFieldArea: Number(totalAreaHa.toFixed(2)),
+        fieldsCount,
+        avgFieldSize: Number((fieldsCount > 0 ? totalAreaHa / fieldsCount : 0).toFixed(2)),
+        referencePoint: {
+          x: Number(center[1] ?? enterprise.referencePoint.x),
+          y: Number(center[0] ?? enterprise.referencePoint.y),
+        },
+      })
+      toast.success("Поля добавлены")
+    } catch {
+      toast.error("Не удалось добавить поля")
+    }
+  }
+
   return (
     <ScrollArea className="h-full">
       <div className="p-6">
@@ -261,6 +318,23 @@ export function EnterpriseDetails({
 
         <div className="mt-6 grid grid-cols-[1fr_180px] gap-6">
           <div className="space-y-1">
+            <div className="flex justify-end pb-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fieldsInputRef.current?.click()}
+              >
+                Загрузить поля
+              </Button>
+              <input
+                ref={fieldsInputRef}
+                type="file"
+                accept=".json,.geojson,application/geo+json,application/json"
+                multiple
+                className="hidden"
+                onChange={(e) => handleFieldsUpload(e.target.files)}
+              />
+            </div>
             {isEditing ? (
               <div className="space-y-2">
                 <div className="grid grid-cols-[1fr_120px] items-center gap-2">
