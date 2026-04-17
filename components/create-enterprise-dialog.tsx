@@ -167,6 +167,7 @@ export function CreateEnterpriseDialog({
   const [formData, setFormData] = useState<CreateEnterpriseData>(getDefaultFormData)
   const [step, setStep] = useState<1 | 2>(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [geojsonFilesLoaded, setGeojsonFilesLoaded] = useState(0)
 
   const handleSubmit = async () => {
     if (!formData.fullName.trim()) {
@@ -178,6 +179,7 @@ export function CreateEnterpriseDialog({
     try {
       await onSubmit(formData)
       setFormData(getDefaultFormData())
+      setGeojsonFilesLoaded(0)
       setStep(1)
       onOpenChange(false)
     } finally {
@@ -217,9 +219,14 @@ export function CreateEnterpriseDialog({
 
     if (parsedCollections.length === 0) return
 
-    const merged: GeoJSON.FeatureCollection = {
+    const mergedFromSelection: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
       features: parsedCollections.flatMap((collection) => collection.features),
+    }
+
+    const merged: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: [...(formData.geojson?.features ?? []), ...mergedFromSelection.features],
     }
 
     const polygonFeatures = merged.features.filter(
@@ -242,6 +249,7 @@ export function CreateEnterpriseDialog({
       fieldsCount: String(fieldsCount),
       avgFieldSize: fieldsCount > 0 ? (totalAreaHa / fieldsCount).toFixed(2) : "0",
     }))
+    setGeojsonFilesLoaded((prev) => prev + parsedCollections.length)
   }
 
 
@@ -380,7 +388,7 @@ export function CreateEnterpriseDialog({
                   className="h-8"
                   onClick={() => document.getElementById("create-geojson-input")?.click()}
                 >
-                  {formData.geojson ? "Заменить GEOJSON" : "Загрузить GEOJSON"}
+                  {formData.geojson ? "Добавить GEOJSON" : "Загрузить GEOJSON"}
                 </Button>
                 <input
                   id="create-geojson-input"
@@ -390,6 +398,11 @@ export function CreateEnterpriseDialog({
                   className="hidden"
                   onChange={(e) => handleGeoJsonUpload(e.target.files)}
                 />
+                {formData.geojson && (
+                  <div className="text-xs text-muted-foreground">
+                    Хозяйство: {formData.fullName || "без названия"} | Полей: {formData.fieldsCount} | Файлов: {geojsonFilesLoaded}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <Input value={formData.referencePoint.x} readOnly className="h-9" placeholder="Опорная X" />
                   <Input value={formData.referencePoint.y} readOnly className="h-9" placeholder="Опорная Y" />

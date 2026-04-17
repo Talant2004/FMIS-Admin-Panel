@@ -11,16 +11,19 @@ interface EnterprisesMapProps {
   enterprises: Enterprise[]
   selectedId: string | null
   zoomToEnterpriseId?: string | null
+  zoomToFieldId?: string | null
   zoomRequestToken?: number
 }
 
 function MapViewportController({
   enterprises,
   zoomToEnterpriseId,
+  zoomToFieldId,
   zoomRequestToken,
 }: {
   enterprises: Enterprise[]
   zoomToEnterpriseId?: string | null
+  zoomToFieldId?: string | null
   zoomRequestToken?: number
 }) {
   const map = useMap()
@@ -29,6 +32,20 @@ function MapViewportController({
 
     const enterprise = enterprises.find((item) => item.id === zoomToEnterpriseId)
     if (!enterprise) return
+
+    if (zoomToFieldId && enterprise.geojson) {
+      const targetFeature = enterprise.geojson.features.find((feature) => {
+        const props = feature.properties as Record<string, unknown> | null
+        return String(props?.fieldId ?? "") === zoomToFieldId
+      })
+      if (targetFeature) {
+        const bounds = L.geoJSON(targetFeature as GeoJSON.Feature).getBounds()
+        if (bounds.isValid()) {
+          map.fitBounds(bounds.pad(0.3))
+          return
+        }
+      }
+    }
 
     if (enterprise.geojson) {
       const bounds = L.geoJSON(enterprise.geojson).getBounds()
@@ -39,7 +56,7 @@ function MapViewportController({
     }
 
     map.setView([enterprise.referencePoint.x, enterprise.referencePoint.y], 14)
-  }, [enterprises, map, zoomRequestToken, zoomToEnterpriseId])
+  }, [enterprises, map, zoomRequestToken, zoomToEnterpriseId, zoomToFieldId])
 
   return null
 }
@@ -48,6 +65,7 @@ export function EnterprisesMap({
   enterprises,
   selectedId,
   zoomToEnterpriseId,
+  zoomToFieldId,
   zoomRequestToken,
 }: EnterprisesMapProps) {
   const selected = enterprises.find((item) => item.id === selectedId) ?? enterprises[0]
@@ -64,6 +82,7 @@ export function EnterprisesMap({
       <MapViewportController
         enterprises={enterprises}
         zoomToEnterpriseId={zoomToEnterpriseId}
+        zoomToFieldId={zoomToFieldId}
         zoomRequestToken={zoomRequestToken}
       />
 
