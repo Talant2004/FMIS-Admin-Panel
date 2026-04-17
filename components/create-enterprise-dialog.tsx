@@ -199,34 +199,49 @@ export function CreateEnterpriseDialog({
     }
   }
 
-  const handleGeoJsonUpload = async (file?: File) => {
-    if (!file) return
-    const text = await file.text()
-    try {
-      const parsed = JSON.parse(text) as GeoJSON.FeatureCollection
-      const polygonFeatures = parsed.features.filter(
-        (feature) => feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
-      )
-      const totalAreaM2 = polygonFeatures.reduce((sum, feature) => sum + area(feature), 0)
-      const totalAreaHa = totalAreaM2 / 10000
-      const center = centroid(parsed)
-      const centerCoords = center.geometry.coordinates
-      const fieldsCount = polygonFeatures.length
+  const handleGeoJsonUpload = async (files?: FileList | null) => {
+    if (!files || files.length === 0) return
 
-      setFormData((prev) => ({
-        ...prev,
-        geojson: parsed,
-        referencePoint: {
-          x: String(centerCoords[1] ?? 0),
-          y: String(centerCoords[0] ?? 0),
-        },
-        totalFieldArea: totalAreaHa.toFixed(2),
-        fieldsCount: String(fieldsCount),
-        avgFieldSize: fieldsCount > 0 ? (totalAreaHa / fieldsCount).toFixed(2) : "0",
-      }))
-    } catch {
-      // Ignore invalid JSON parse and keep previous state.
+    const parsedCollections: GeoJSON.FeatureCollection[] = []
+    for (const file of Array.from(files)) {
+      const text = await file.text()
+      try {
+        const parsed = JSON.parse(text) as GeoJSON.FeatureCollection
+        if (parsed?.type === "FeatureCollection" && Array.isArray(parsed.features)) {
+          parsedCollections.push(parsed)
+        }
+      } catch {
+        // Skip invalid file and continue with the rest.
+      }
     }
+
+    if (parsedCollections.length === 0) return
+
+    const merged: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: parsedCollections.flatMap((collection) => collection.features),
+    }
+
+    const polygonFeatures = merged.features.filter(
+      (feature) => feature.geometry?.type === "Polygon" || feature.geometry?.type === "MultiPolygon"
+    )
+    const totalAreaM2 = polygonFeatures.reduce((sum, feature) => sum + area(feature), 0)
+    const totalAreaHa = totalAreaM2 / 10000
+    const center = centroid(merged)
+    const centerCoords = center.geometry.coordinates
+    const fieldsCount = polygonFeatures.length
+
+    setFormData((prev) => ({
+      ...prev,
+      geojson: merged,
+      referencePoint: {
+        x: String(centerCoords[1] ?? 0),
+        y: String(centerCoords[0] ?? 0),
+      },
+      totalFieldArea: totalAreaHa.toFixed(2),
+      fieldsCount: String(fieldsCount),
+      avgFieldSize: fieldsCount > 0 ? (totalAreaHa / fieldsCount).toFixed(2) : "0",
+    }))
   }
 
 
@@ -371,8 +386,9 @@ export function CreateEnterpriseDialog({
                   id="create-geojson-input"
                   type="file"
                   accept=".json,.geojson,application/geo+json,application/json"
+                  multiple
                   className="hidden"
-                  onChange={(e) => handleGeoJsonUpload(e.target.files?.[0])}
+                  onChange={(e) => handleGeoJsonUpload(e.target.files)}
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <Input value={formData.referencePoint.x} readOnly className="h-9" placeholder="Опорная X" />

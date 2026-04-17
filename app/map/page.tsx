@@ -16,6 +16,8 @@ const EnterprisesMap = dynamic(
 export default function MapPage() {
   const [enterprises, setEnterprises] = useState<Enterprise[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [zoomToEnterpriseId, setZoomToEnterpriseId] = useState<string | null>(null)
+  const [zoomRequestToken, setZoomRequestToken] = useState(0)
 
   useEffect(() => {
     let isMounted = true
@@ -45,7 +47,12 @@ export default function MapPage() {
         <div className="h-full">
           <div className="border-b p-3 text-sm font-medium">Карта полей</div>
           <div className="h-[calc(100%-45px)]">
-            <EnterprisesMap enterprises={enterprises} selectedId={selectedId} />
+            <EnterprisesMap
+              enterprises={enterprises}
+              selectedId={selectedId}
+              zoomToEnterpriseId={zoomToEnterpriseId}
+              zoomRequestToken={zoomRequestToken}
+            />
           </div>
         </div>
         <div className="border-l">
@@ -57,6 +64,11 @@ export default function MapPage() {
                 variant={selectedId === enterprise.id ? "default" : "outline"}
                 className="w-full justify-start"
                 onClick={() => setSelectedId(enterprise.id)}
+                onDoubleClick={() => {
+                  setSelectedId(enterprise.id)
+                  setZoomToEnterpriseId(enterprise.id)
+                  setZoomRequestToken((prev) => prev + 1)
+                }}
               >
                 {enterprise.name}
               </Button>

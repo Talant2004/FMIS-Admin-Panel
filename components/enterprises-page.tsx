@@ -156,7 +156,19 @@ export function EnterprisesPage() {
         x: parseFloat(data.referencePoint.x) || 0,
         y: parseFloat(data.referencePoint.y) || 0,
       },
-      geojson: data.geojson,
+      geojson: data.geojson
+        ? {
+            ...data.geojson,
+            features: data.geojson.features.map((feature, index) => ({
+              ...feature,
+              properties: {
+                ...(feature.properties ?? {}),
+                enterpriseName: data.fullName,
+                fieldId: `${newId}-F${String(index + 1).padStart(3, "0")}`,
+              },
+            })),
+          }
+        : undefined,
       tags: [],
       isActive: !data.isInactive,
       totalFieldArea: parseNumber(data.totalFieldArea),
