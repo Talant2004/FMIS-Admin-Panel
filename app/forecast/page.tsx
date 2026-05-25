@@ -37,6 +37,9 @@ interface RegionData {
   lat: number
   lon: number
   zone: RegionZone
+  isFarm?: boolean        // true = real farm from Firestore
+  enterpriseName?: string // for field-level entries
+  fieldId?: string
   currentTemp?: number
   currentHumidity?: number
   currentWind?: number
@@ -270,6 +273,8 @@ function SetBar({ value }: { value: number }) {
 /* ══════════════════════════════════════════════════════
    PAGE
 ══════════════════════════════════════════════════════ */
+interface OsmFarm { id: string; lat: number; lon: number; name: string | null }
+
 export default function ForecastPage() {
   const [regions, setRegions] = useState<RegionData[]>([])
   const [isFarmData, setIsFarmData] = useState(false)
@@ -278,6 +283,7 @@ export default function ForecastPage() {
   const [updated, setUpdated] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [initializing, setInitializing] = useState(true)
+  const [osmFarms, setOsmFarms] = useState<OsmFarm[]>([])
 
   useEffect(() => {
     let live = true
@@ -333,6 +339,14 @@ export default function ForecastPage() {
 
     run()
     return () => { live = false }
+  }, [])
+
+  // Load OSM farmland points
+  useEffect(() => {
+    fetch("/kz-farms.json")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((data: OsmFarm[]) => setOsmFarms(data))
+      .catch(() => {/* file not present – ok */})
   }, [])
 
   const pests   = CULTURE_PESTS[culture]
@@ -473,6 +487,7 @@ export default function ForecastPage() {
             regions={regions}
             overallRiskFn={overallRiskForMap}
             onSelectRegion={handleMapSelectRegion}
+            osmFarms={osmFarms}
           />
         )}
 
