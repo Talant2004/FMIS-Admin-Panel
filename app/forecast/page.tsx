@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import dynamic from "next/dynamic"
 import { Navigation } from "@/components/navigation"
+import { getEnterprises } from "@/lib/firestore-enterprises"
 
 const ForecastMap = dynamic(() => import("@/components/forecast-map"), { ssr: false })
 
@@ -48,26 +49,17 @@ interface RegionData {
 }
 
 /* ══════════════════════════════════════════════════════
-   STATIC DATA
+   STATIC FALLBACK (when Firestore has no enterprises)
 ══════════════════════════════════════════════════════ */
-const REGIONS_BASE: Array<{ id: string; name: string; lat: number; lon: number; zone: RegionZone }> = [
-  { id: "astana",      name: "Астана",          lat: 51.1801, lon: 71.4460, zone: "Центр"  },
-  { id: "almaty_c",    name: "Алматы",           lat: 43.2220, lon: 76.8512, zone: "Юг"     },
-  { id: "shymkent",    name: "Шымкент",          lat: 42.3417, lon: 69.5901, zone: "Юг"     },
-  { id: "akmola",      name: "Акмолинская",      lat: 51.9000, lon: 69.1333, zone: "Север"  },
-  { id: "aktobe",      name: "Актюбинская",      lat: 50.2793, lon: 57.2073, zone: "Запад"  },
-  { id: "almaty_o",    name: "Алматинская",      lat: 45.0119, lon: 78.3925, zone: "Юг"     },
-  { id: "atyrau",      name: "Атырауская",       lat: 47.1133, lon: 51.8833, zone: "Запад"  },
-  { id: "vko",         name: "ВКО",              lat: 49.9667, lon: 82.6167, zone: "Восток" },
-  { id: "zhambyl",     name: "Жамбылская",       lat: 42.9000, lon: 71.3667, zone: "Юг"     },
-  { id: "zko",         name: "ЗКО",              lat: 51.2167, lon: 51.3833, zone: "Запад"  },
-  { id: "karaganda",   name: "Карагандинская",   lat: 49.8028, lon: 73.1038, zone: "Центр"  },
-  { id: "kostanay",    name: "Костанайская",     lat: 53.2144, lon: 63.6248, zone: "Север"  },
-  { id: "kyzylorda",   name: "Кызылординская",   lat: 44.8481, lon: 65.5093, zone: "Центр"  },
-  { id: "mangystau",   name: "Мангистауская",    lat: 43.6646, lon: 51.1726, zone: "Запад"  },
-  { id: "pavlodar",    name: "Павлодарская",     lat: 52.2873, lon: 76.9674, zone: "Север"  },
-  { id: "sko",         name: "СКО",              lat: 54.8645, lon: 69.1551, zone: "Север"  },
-  { id: "turkestan",   name: "Туркестанская",    lat: 43.2981, lon: 68.2758, zone: "Юг"     },
+const FALLBACK_REGIONS: Array<{ id: string; name: string; lat: number; lon: number; zone: RegionZone }> = [
+  { id: "astana",    name: "Астана",        lat: 51.1801, lon: 71.4460, zone: "Центр" },
+  { id: "almaty_c",  name: "Алматы",        lat: 43.2220, lon: 76.8512, zone: "Юг"   },
+  { id: "kostanay",  name: "Костанайская",  lat: 53.2144, lon: 63.6248, zone: "Север"},
+  { id: "sko",       name: "СКО",           lat: 54.8645, lon: 69.1551, zone: "Север"},
+  { id: "pavlodar",  name: "Павлодарская",  lat: 52.2873, lon: 76.9674, zone: "Север"},
+  { id: "akmola",    name: "Акмолинская",   lat: 51.9000, lon: 69.1333, zone: "Север"},
+  { id: "shymkent",  name: "Шымкент",       lat: 42.3417, lon: 69.5901, zone: "Юг"   },
+  { id: "turkestan", name: "Туркестанская", lat: 43.2981, lon: 68.2758, zone: "Юг"   },
 ]
 
 const EMPTY_RISKS: PestRisks = {
@@ -279,20 +271,55 @@ function SetBar({ value }: { value: number }) {
    PAGE
 ══════════════════════════════════════════════════════ */
 export default function ForecastPage() {
-  const [regions, setRegions] = useState<RegionData[]>(
-    REGIONS_BASE.map(r => ({ ...r, forecast: [], set7: 0, risks: { ...EMPTY_RISKS }, loading: true }))
-  )
+  const [regions, setRegions] = useState<RegionData[]>([])
+  const [isFarmData, setIsFarmData] = useState(false)
   const [culture, setCulture] = useState<CultureFilter>("all")
   const [expanded, setExpanded] = useState<string | null>(null)
   const [updated, setUpdated] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<"list" | "map">("list")
+  const [initializing, setInitializing] = useState(true)
 
   useEffect(() => {
     let live = true
-    Promise.allSettled(REGIONS_BASE.map(r => fetchWeather(r.lat, r.lon))).then(results => {
+
+    const run = async () => {
+      // 1. Try to load real enterprises from Firestore
+      let bases: Array<{ id: string; name: string; lat: number; lon: number; zone: RegionZone }>
+      let fromFarms = false
+
+      try {
+        const enterprises = await getEnterprises()
+        const valid = enterprises.filter(
+          e => e.referencePoint && Math.abs(e.referencePoint.y) > 0.01 && Math.abs(e.referencePoint.x) > 0.01
+        )
+
+        if (valid.length > 0) {
+          bases = valid.map(e => ({
+            id: e.id,
+            name: e.name || e.shortName || `Ферма ${e.id}`,
+            lat: e.referencePoint.y,
+            lon: e.referencePoint.x,
+            zone: "Центр" as RegionZone,
+          }))
+          fromFarms = true
+        } else {
+          bases = FALLBACK_REGIONS
+        }
+      } catch {
+        bases = FALLBACK_REGIONS
+      }
+
       if (!live) return
+      setIsFarmData(fromFarms)
+      setRegions(bases.map(b => ({ ...b, forecast: [], set7: 0, risks: { ...EMPTY_RISKS }, loading: true })))
+      setInitializing(false)
+
+      // 2. Fetch weather for each point
+      const results = await Promise.allSettled(bases.map(b => fetchWeather(b.lat, b.lon)))
+      if (!live) return
+
       setRegions(
-        REGIONS_BASE.map((base, i) => {
+        bases.map((base, i) => {
           const r = results[i]
           if (r.status === "rejected") return { ...base, forecast: [], set7: 0, risks: { ...EMPTY_RISKS }, loading: false, error: true }
           const { forecast, ...rest } = r.value
@@ -302,7 +329,9 @@ export default function ForecastPage() {
         })
       )
       setUpdated(new Date().toLocaleTimeString("ru-RU"))
-    })
+    }
+
+    run()
     return () => { live = false }
   }, [])
 
@@ -341,17 +370,35 @@ export default function ForecastPage() {
           <div>
             <h1 className="text-lg font-bold tracking-tight">Фитосанитарный прогноз</h1>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Казахстан · 17 регионов · Феноло­гические модели + Open-Meteo
+              {initializing
+                ? "Загрузка предприятий…"
+                : isFarmData
+                  ? `По ${regions.length} фермам из базы · Феноло­гические модели + Open-Meteo`
+                  : `Нет ферм в базе · Показаны регионы-заглушки · Добавьте предприятия`
+              }
               {updated && ` · Обновлено ${updated}`}
             </p>
+            {!initializing && !isFarmData && (
+              <p className="text-[11px] mt-0.5 text-amber-600 dark:text-amber-400 font-medium">
+                ⚠️ Добавьте предприятия на странице &quot;Предприятия&quot; — прогноз будет по реальным координатам ферм
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             {avgTemp && (
               <Stat label="Ср. температура" value={`${avgTemp}°C`} />
             )}
-            <Stat label="🔴 Высокий риск" value={`${highCount} рег.`} valueClass="text-red-600 dark:text-red-400" />
-            <Stat label="🟡 Средний риск" value={`${mediumCount} рег.`} valueClass="text-amber-600 dark:text-amber-400" />
+            <Stat
+              label={isFarmData ? "🔴 Высокий риск" : "🔴 Высокий риск"}
+              value={`${highCount} ${isFarmData ? "ферм" : "рег."}`}
+              valueClass="text-red-600 dark:text-red-400"
+            />
+            <Stat
+              label="🟡 Средний риск"
+              value={`${mediumCount} ${isFarmData ? "ферм" : "рег."}`}
+              valueClass="text-amber-600 dark:text-amber-400"
+            />
 
             {/* View toggle */}
             <div className="flex rounded-lg border overflow-hidden shadow-sm">
