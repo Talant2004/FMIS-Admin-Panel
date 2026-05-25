@@ -1,7 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { Navigation } from "@/components/navigation"
+
+const ForecastMap = dynamic(() => import("@/components/forecast-map"), { ssr: false })
 
 /* ══════════════════════════════════════════════════════
    TYPES
@@ -282,6 +285,7 @@ export default function ForecastPage() {
   const [culture, setCulture] = useState<CultureFilter>("all")
   const [expanded, setExpanded] = useState<string | null>(null)
   const [updated, setUpdated] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<"list" | "map">("list")
 
   useEffect(() => {
     let live = true
@@ -313,6 +317,19 @@ export default function ForecastPage() {
   const absMax = allForecasts.length ? Math.max(...allForecasts.map(d => d.tempMax)) : 40
   const absMin = allForecasts.length ? Math.min(...allForecasts.map(d => d.tempMin)) : -10
 
+  const overallRiskForMap = useCallback(
+    (risks: PestRisks) => overallRisk(risks, pests),
+    [pests]
+  )
+
+  const handleMapSelectRegion = useCallback((id: string) => {
+    setViewMode("list")
+    setExpanded(id)
+    setTimeout(() => {
+      document.getElementById(`region-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 100)
+  }, [])
+
   return (
     <main className="min-h-screen bg-background pb-10">
       <Navigation />
@@ -329,12 +346,42 @@ export default function ForecastPage() {
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {avgTemp && (
               <Stat label="Ср. температура" value={`${avgTemp}°C`} />
             )}
             <Stat label="🔴 Высокий риск" value={`${highCount} рег.`} valueClass="text-red-600 dark:text-red-400" />
             <Stat label="🟡 Средний риск" value={`${mediumCount} рег.`} valueClass="text-amber-600 dark:text-amber-400" />
+
+            {/* View toggle */}
+            <div className="flex rounded-lg border overflow-hidden shadow-sm">
+              <button
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-colors ${
+                  viewMode === "list"
+                    ? "bg-foreground text-background"
+                    : "bg-card hover:bg-muted text-foreground"
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                Список
+              </button>
+              <button
+                onClick={() => setViewMode("map")}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-colors border-l ${
+                  viewMode === "map"
+                    ? "bg-foreground text-background"
+                    : "bg-card hover:bg-muted text-foreground"
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                Карта
+              </button>
+            </div>
           </div>
         </div>
 
@@ -373,7 +420,17 @@ export default function ForecastPage() {
           ))}
         </div>
 
+        {/* ── Map view ── */}
+        {viewMode === "map" && (
+          <ForecastMap
+            regions={regions}
+            overallRiskFn={overallRiskForMap}
+            onSelectRegion={handleMapSelectRegion}
+          />
+        )}
+
         {/* ── Region grid ── */}
+        {viewMode === "list" && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {regions.map(region => {
             const overall   = region.loading ? null : overallRisk(region.risks, pests)
@@ -384,6 +441,7 @@ export default function ForecastPage() {
             return (
               <div
                 key={region.id}
+                id={`region-${region.id}`}
                 onClick={() => setExpanded(isOpen ? null : region.id)}
                 className={`rounded-xl border bg-card shadow-sm cursor-pointer transition-all hover:shadow-md select-none ${
                   isOpen ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
@@ -546,6 +604,7 @@ export default function ForecastPage() {
             )
           })}
         </div>
+        )}
 
         {/* Footer */}
         <p className="text-center text-[11px] text-muted-foreground pt-2">
