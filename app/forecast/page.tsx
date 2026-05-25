@@ -21,40 +21,14 @@ interface PestRisks {
   coloradoBeetle: RiskLevel; septoria: RiskLevel
 }
 interface OsmFarm {
-  id: string; lat: number; lon: number; name: string | null; oblast?: string
+  id: string; lat: number; lon: number; name: string | null
+  oblast?: string; district?: string
 }
 interface FarmWeather {
   forecast: DayForecast[]; set7: number; risks: PestRisks
   currentTemp?: number; currentHumidity?: number
   currentWind?: number; currentWeatherCode?: number
   loading: boolean; error?: boolean
-}
-
-/* ══════════════════════════════════════════════════════
-   OBLAST BOUNDING BOXES
-══════════════════════════════════════════════════════ */
-const OBLAST_BBOXES: Array<[string, { minLat: number; maxLat: number; minLon: number; maxLon: number }]> = [
-  ["СКО",            { minLat: 52.5, maxLat: 56.0, minLon: 64.5, maxLon: 71.5 }],
-  ["Костанайская",   { minLat: 50.0, maxLat: 56.0, minLon: 59.0, maxLon: 67.5 }],
-  ["Акмолинская",    { minLat: 50.0, maxLat: 55.0, minLon: 67.0, maxLon: 75.0 }],
-  ["Павлодарская",   { minLat: 50.0, maxLat: 55.5, minLon: 73.5, maxLon: 80.5 }],
-  ["ВКО",            { minLat: 47.0, maxLat: 51.5, minLon: 79.0, maxLon: 88.0 }],
-  ["Карагандинская", { minLat: 45.5, maxLat: 51.5, minLon: 67.0, maxLon: 79.0 }],
-  ["Актюбинская",    { minLat: 47.0, maxLat: 52.5, minLon: 54.0, maxLon: 62.0 }],
-  ["ЗКО",            { minLat: 49.5, maxLat: 52.5, minLon: 48.5, maxLon: 55.0 }],
-  ["Атырауская",     { minLat: 45.5, maxLat: 49.5, minLon: 49.0, maxLon: 56.0 }],
-  ["Мангистауская",  { minLat: 41.5, maxLat: 47.0, minLon: 49.0, maxLon: 57.0 }],
-  ["Кызылординская", { minLat: 43.0, maxLat: 47.5, minLon: 59.0, maxLon: 69.0 }],
-  ["Туркестанская",  { minLat: 40.5, maxLat: 44.0, minLon: 66.5, maxLon: 73.0 }],
-  ["Жамбылская",     { minLat: 41.5, maxLat: 44.5, minLon: 69.0, maxLon: 76.0 }],
-  ["Алматинская",    { minLat: 42.5, maxLat: 47.0, minLon: 74.0, maxLon: 83.0 }],
-]
-
-function assignOblast(lat: number, lon: number): string {
-  for (const [name, b] of OBLAST_BBOXES) {
-    if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return name
-  }
-  return "Другой регион"
 }
 
 /* ══════════════════════════════════════════════════════
@@ -292,9 +266,16 @@ function FarmCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-semibold text-sm truncate">{farm.name ?? "Безымянное поле"}</span>
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
               {farm.oblast && (
-                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
+                <span className="rounded bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 text-[10px] text-blue-700 dark:text-blue-300 font-medium">
                   {farm.oblast}
+                </span>
+              )}
+              {farm.district && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
+                  {farm.district}
                 </span>
               )}
             </div>
@@ -366,18 +347,18 @@ export default function ForecastPage() {
   const [viewMode, setViewMode]     = useState<"list" | "map">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedOblast, setSelectedOblast] = useState<string | null>(null)
+  const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null)
   const [selectedFarm, setSelectedFarm]     = useState<string | null>(null)
   const [weatherCache, setWeatherCache]     = useState<Record<string, FarmWeather>>({})
   const [page, setPage] = useState(0)
   const PAGE_SIZE = 24
 
-  // Load OSM farms + assign oblasts
+  // Load OSM farms (with oblast + district from enrich script)
   useEffect(() => {
     fetch("/kz-farms.json")
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then((raw: Omit<OsmFarm, "oblast">[]) => {
-        const farms = raw.map(f => ({ ...f, oblast: assignOblast(f.lat, f.lon) }))
-        setOsmFarms(farms)
+      .then((data: OsmFarm[]) => {
+        setOsmFarms(data)
         setFarmsReady(true)
       })
       .catch(() => setFarmsReady(true))
@@ -387,25 +368,42 @@ export default function ForecastPage() {
 
   // All unique oblasts
   const oblasts = useMemo(() => {
-    const set = new Set(osmFarms.map(f => f.oblast ?? "Другой регион"))
-    return Array.from(set).sort()
+    const set = new Set(osmFarms.map(f => f.oblast).filter(Boolean) as string[])
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"))
   }, [osmFarms])
 
-  // Filtered farms
+  const districts = useMemo(() => {
+    let source = osmFarms
+    if (selectedOblast) source = source.filter(f => f.oblast === selectedOblast)
+    const set = new Set(source.map(f => f.district).filter(Boolean) as string[])
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"))
+  }, [osmFarms, selectedOblast])
+
   const filteredFarms = useMemo(() => {
     let result = osmFarms
     if (selectedOblast) result = result.filter(f => f.oblast === selectedOblast)
+    if (selectedDistrict) result = result.filter(f => f.district === selectedDistrict)
     const q = searchQuery.trim().toLowerCase()
-    if (q) result = result.filter(f =>
-      (f.name?.toLowerCase().includes(q)) ||
-      (f.oblast?.toLowerCase().includes(q)) ||
-      `${f.lat.toFixed(2)} ${f.lon.toFixed(2)}`.includes(q)
-    )
+    if (q) {
+      result = result.filter(f =>
+        (f.name?.toLowerCase().includes(q)) ||
+        (f.oblast?.toLowerCase().includes(q)) ||
+        (f.district?.toLowerCase().includes(q)) ||
+        f.id.toLowerCase().includes(q) ||
+        `${f.lat.toFixed(2)} ${f.lon.toFixed(2)}`.includes(q)
+      )
+    }
     return result
-  }, [osmFarms, selectedOblast, searchQuery])
+  }, [osmFarms, selectedOblast, selectedDistrict, searchQuery])
+
+  const resetFilters = useCallback(() => {
+    setSearchQuery("")
+    setSelectedOblast(null)
+    setSelectedDistrict(null)
+  }, [])
 
   // Reset page when filter changes
-  useEffect(() => { setPage(0); setSelectedFarm(null) }, [searchQuery, selectedOblast, culture])
+  useEffect(() => { setPage(0); setSelectedFarm(null) }, [searchQuery, selectedOblast, selectedDistrict, culture])
 
   const pagedFarms = filteredFarms.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.ceil(filteredFarms.length / PAGE_SIZE)
@@ -437,9 +435,10 @@ export default function ForecastPage() {
   const handleMapSelectFarm = useCallback((id: string) => {
     const farm = osmFarms.find(f => f.id === id)
     if (!farm) return
-    setViewMode("list")
     setSelectedFarm(id)
-    setSearchQuery(farm.name ?? "")
+    if (farm.oblast) setSelectedOblast(farm.oblast)
+    if (farm.district) setSelectedDistrict(farm.district)
+    setSearchQuery(farm.name ?? farm.district ?? "")
     fetchFarmWeather(farm)
   }, [osmFarms, fetchFarmWeather])
 
@@ -524,13 +523,82 @@ export default function ForecastPage() {
           ))}
         </div>
 
+        {/* ── SEARCH + FILTERS (list + map) ── */}
+        <div className="rounded-xl border bg-card p-3 shadow-sm space-y-3">
+          <div className="flex flex-col lg:flex-row gap-2">
+            <div className="relative flex-1">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Поиск: поле, район, область, координаты…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full rounded-lg border bg-background pl-9 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm">✕</button>
+              )}
+            </div>
+
+            <select
+              value={selectedOblast ?? ""}
+              onChange={e => {
+                setSelectedOblast(e.target.value || null)
+                setSelectedDistrict(null)
+              }}
+              className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 lg:w-56"
+            >
+              <option value="">Все области</option>
+              {oblasts.map(o => (
+                <option key={o} value={o}>
+                  {o} ({osmFarms.filter(f => f.oblast === o).length})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedDistrict ?? ""}
+              onChange={e => setSelectedDistrict(e.target.value || null)}
+              disabled={districts.length === 0}
+              className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 lg:w-56 disabled:opacity-50"
+            >
+              <option value="">Все районы</option>
+              {districts.map(d => (
+                <option key={d} value={d}>
+                  {d} ({osmFarms.filter(f => (!selectedOblast || f.oblast === selectedOblast) && f.district === d).length})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {filteredFarms.length === osmFarms.length
+                ? `Все ${osmFarms.length.toLocaleString()} полей`
+                : `Найдено: ${filteredFarms.length.toLocaleString()} из ${osmFarms.length.toLocaleString()}`}
+              {selectedOblast && ` · Область: ${selectedOblast}`}
+              {selectedDistrict && ` · Район: ${selectedDistrict}`}
+            </p>
+            {(searchQuery || selectedOblast || selectedDistrict) && (
+              <button onClick={resetFilters} className="text-xs text-primary hover:underline">
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* ══ MAP VIEW ══ */}
         {viewMode === "map" && (
           <ForecastMap
             regions={[]}
             overallRiskFn={overallRiskForMap}
             onSelectRegion={handleMapSelectFarm}
-            osmFarms={osmFarms}
+            osmFarms={filteredFarms}
+            totalFarms={osmFarms.length}
+            selectedFarmId={selectedFarm}
           />
         )}
 
@@ -538,59 +606,12 @@ export default function ForecastPage() {
         {viewMode === "list" && (
           <div className="space-y-4">
 
-            {/* Search + Oblast filter */}
-            <div className="flex flex-col sm:flex-row gap-2">
-              {/* Search */}
-              <div className="relative flex-1">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  type="text"
-                  placeholder={`Поиск по ${osmFarms.length.toLocaleString()} полям… (название, область)`}
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border bg-card pl-9 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm">✕</button>
-                )}
-              </div>
-
-              {/* Oblast filter */}
-              <select
-                value={selectedOblast ?? ""}
-                onChange={e => setSelectedOblast(e.target.value || null)}
-                className="rounded-lg border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 sm:w-52"
-              >
-                <option value="">Все области</option>
-                {oblasts.map(o => (
-                  <option key={o} value={o}>{o} ({osmFarms.filter(f => f.oblast === o).length})</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Results count */}
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                {filteredFarms.length === osmFarms.length
-                  ? `Все ${osmFarms.length.toLocaleString()} полей`
-                  : `Найдено: ${filteredFarms.length.toLocaleString()} полей`}
-                {selectedFarm && " · Нажмите ещё раз чтобы свернуть"}
-              </p>
-              {filteredFarms.length === 0 && searchQuery && (
-                <button onClick={() => { setSearchQuery(""); setSelectedOblast(null) }}
-                  className="text-xs text-primary hover:underline">Сбросить фильтры</button>
-              )}
-            </div>
-
             {/* Farm cards grid */}
             {filteredFarms.length === 0 ? (
               <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
                 <div className="text-4xl mb-2">🔍</div>
                 <div className="font-medium">Поля не найдены</div>
-                <div className="text-sm mt-1">Попробуйте изменить запрос или область</div>
+                <div className="text-sm mt-1">Измените область, район или поисковый запрос</div>
               </div>
             ) : (
               <>
