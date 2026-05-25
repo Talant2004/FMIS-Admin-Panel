@@ -8,6 +8,7 @@ const navItems = [
   { label: "Таблица", href: "/dashboard" },
   { label: "Предприятия", href: "/" },
   { label: "Карта", href: "/map" },
+  { label: "Прогноз", href: "/forecast" },
   { label: "Аналитика", href: "/analytics" },
   { label: "Настройки", href: "/settings" },
 ]
