@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export function UserMenu() {
-  const { user, loading, signOut } = useAuth()
+  const { user, loading, isAdmin, signOut } = useAuth()
 
   if (loading) {
     return <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
@@ -53,7 +53,15 @@ export function UserMenu() {
         <DropdownMenuLabel className="font-normal">
           <p className="truncate text-sm font-medium">{user.displayName ?? "Пользователь"}</p>
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+          <p className={`mt-1 text-xs ${isAdmin ? "text-emerald-600" : "text-muted-foreground"}`}>
+            {isAdmin ? "Администратор" : "Обычный пользователь"}
+          </p>
         </DropdownMenuLabel>
+        {!isAdmin ? (
+          <DropdownMenuItem asChild>
+            <Link href="/settings">Как стать админом</Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {

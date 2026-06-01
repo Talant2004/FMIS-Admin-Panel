@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { AdminAccessCard } from "@/components/auth/admin-access-card"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { RequireAuth } from "@/components/auth/require-auth"
@@ -56,7 +57,7 @@ export default function ForecastPage() {
 }
 
 function ForecastPageContent() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
@@ -199,7 +200,16 @@ function ForecastPageContent() {
             Только точки из полевого журнала
             {!fieldsLoading && fields.length > 0 ? ` · ${fields.length}` : ""}
             {user?.email ? ` · ${user.email}` : ""}
+            {isAdmin ? " · админ" : ""}
           </p>
+          {!isAdmin && !fieldsLoading ? (
+            <p className="mb-3 text-xs text-muted-foreground">
+              Видны только ваши точки.{" "}
+              <Link href="/settings" className="font-medium text-primary underline-offset-2 hover:underline">
+                Как войти как администратор
+              </Link>
+            </p>
+          ) : null}
           <FieldSelector
             fields={fields}
             selectedField={selectedField}
