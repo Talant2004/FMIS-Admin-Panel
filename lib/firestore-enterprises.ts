@@ -40,9 +40,13 @@ function fromFirestoreEnterprise(enterprise: EnterpriseFirestore): Enterprise {
 
 export async function getEnterprises(): Promise<Enterprise[]> {
   const snapshot = await getDocs(collection(getDb(), ENTERPRISES_COLLECTION));
-  const enterprises = snapshot.docs.map((snapshotDoc) =>
-    fromFirestoreEnterprise(snapshotDoc.data() as EnterpriseFirestore)
-  );
+  const enterprises = snapshot.docs.map((snapshotDoc) => {
+    const data = snapshotDoc.data() as EnterpriseFirestore;
+    return fromFirestoreEnterprise({
+      ...data,
+      id: data.id ?? snapshotDoc.id,
+    });
+  });
   return enterprises.sort((a, b) => a.id.localeCompare(b.id));
 }
 

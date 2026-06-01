@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { getEnterprises } from "@/lib/firestore-enterprises"
-import { mockEnterprises } from "@/lib/mock-data"
 import type { Enterprise } from "@/lib/types"
 
 function TableHeadCell({ label }: { label: string }) {
@@ -34,6 +33,7 @@ function LinkCell({ url }: { url?: string }) {
 export default function DashboardPage() {
   const [enterprises, setEnterprises] = useState<Enterprise[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -42,10 +42,13 @@ export default function DashboardPage() {
       try {
         const data = await getEnterprises()
         if (!isMounted) return
-        setEnterprises(data.length ? data : mockEnterprises)
-      } catch {
+        setLoadError(null)
+        setEnterprises(data)
+      } catch (error) {
+        console.error("Failed to load enterprises from Firestore.", error)
         if (!isMounted) return
-        setEnterprises(mockEnterprises)
+        setLoadError(error instanceof Error ? error.message : "Неизвестная ошибка")
+        setEnterprises([])
       } finally {
         if (isMounted) setIsLoading(false)
       }
@@ -62,6 +65,11 @@ export default function DashboardPage() {
       <Navigation />
 
       <div className="p-4">
+        {loadError && (
+          <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Ошибка Firestore: {loadError}
+          </div>
+        )}
         <h1 className="mb-3 text-sm font-semibold">
           Таблица предприятий {isLoading ? "(загрузка...)" : `(${enterprises.length})`}
         </h1>

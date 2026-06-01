@@ -1,665 +1,198 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
-import dynamic from "next/dynamic"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Navigation } from "@/components/navigation"
+import { AlertBanner } from "@/components/forecast/AlertBanner"
+import { ActionList } from "@/components/forecast/ActionList"
+import { FieldSelector } from "@/components/forecast/FieldSelector"
+import { PestRiskCard } from "@/components/forecast/PestRiskCard"
+import { WeatherStrip } from "@/components/forecast/WeatherStrip"
+import {
+  applySamplesToRisks,
+  calcAllRisks,
+  enrichDaysWithRisk,
+} from "@/lib/forecast/calcRisks"
+import { fetchFieldsFromFirebase } from "@/lib/forecast/fetchFields"
+import { fetchRecentSamples } from "@/lib/forecast/fetchSamples"
+import { fetchWeather } from "@/lib/forecast/fetchWeather"
+import { DEMO_FIELDS, type Field, type PestRisk, type WeatherDay } from "@/lib/forecast/types"
 
-const ForecastMap = dynamic(() => import("@/components/forecast-map"), { ssr: false })
-
-/* ══════════════════════════════════════════════════════
-   TYPES
-══════════════════════════════════════════════════════ */
-type RiskLevel = "high" | "medium" | "low"
-type CultureFilter = "all" | "wheat" | "potato" | "sunflower"
-
-interface DayForecast {
-  date: string; tempMax: number; tempMin: number
-  precipitation: number; weatherCode: number; windMax: number
-}
-interface PestRisks {
-  phytophthora: RiskLevel; locust: RiskLevel; aphid: RiskLevel
-  coloradoBeetle: RiskLevel; septoria: RiskLevel
-}
-interface OsmFarm {
-  id: string; lat: number; lon: number; name: string | null
-  oblast?: string; district?: string
-}
-interface FarmWeather {
-  forecast: DayForecast[]; set7: number; risks: PestRisks
-  currentTemp?: number; currentHumidity?: number
-  currentWind?: number; currentWeatherCode?: number
-  loading: boolean; error?: boolean
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-/* ══════════════════════════════════════════════════════
-   CONSTANTS
-══════════════════════════════════════════════════════ */
-const EMPTY_RISKS: PestRisks = { phytophthora: "low", locust: "low", aphid: "low", coloradoBeetle: "low", septoria: "low" }
-
-const CULTURE_PESTS: Record<CultureFilter, (keyof PestRisks)[]> = {
-  all:       ["phytophthora", "locust", "aphid", "coloradoBeetle", "septoria"],
-  wheat:     ["locust", "aphid", "septoria"],
-  potato:    ["phytophthora", "coloradoBeetle"],
-  sunflower: ["aphid", "locust"],
-}
-const CULTURE_LABELS: Record<CultureFilter, string> = {
-  all: "Все культуры", wheat: "🌾 Пшеница", potato: "🥔 Картофель", sunflower: "🌻 Подсолнечник",
-}
-const PEST_META: Record<keyof PestRisks, { name: string; threshold: string; culture: string }> = {
-  phytophthora:   { name: "Фитофтороз",       culture: "Картофель",     threshold: "T=10–25°C + ≥2 дождливых дня подряд" },
-  locust:         { name: "Саранча",           culture: "Пшеница/Все",   threshold: "T>22°C + ≥3 сухих дня подряд" },
-  aphid:          { name: "Тля зерновая",      culture: "Пшеница",       threshold: "T>12°C в течение ≥5 дней" },
-  coloradoBeetle: { name: "Колорадский жук",   culture: "Картофель",     threshold: "СЭТ (база +10°C) ≥ 230°C·сут" },
-  septoria:       { name: "Септориоз пшеницы", culture: "Пшеница",       threshold: "T=15–22°C + осадки ≥3 дня подряд" },
-}
-const WMO_SHORT: Record<number, string> = {
-  0: "Ясно", 1: "Ясно", 2: "Облачно", 3: "Пасмурно",
-  45: "Туман", 48: "Туман", 51: "Морось", 53: "Морось", 55: "Морось",
-  61: "Дождь", 63: "Умер. дождь", 65: "Ливень",
-  71: "Снег", 73: "Снег", 75: "Снегопад",
-  80: "Ливень", 81: "Ливень", 82: "Сильный ливень",
-  95: "Гроза", 96: "Гроза", 99: "Гроза",
-}
-const DAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
-const RISK_STYLE = {
-  high:   { bg: "bg-red-50 dark:bg-red-950/50",    border: "border-red-200 dark:border-red-800",    text: "text-red-700 dark:text-red-400",    dot: "bg-red-500",    label: "Высокий",  badge: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400"   },
-  medium: { bg: "bg-amber-50 dark:bg-amber-950/50", border: "border-amber-200 dark:border-amber-800", text: "text-amber-700 dark:text-amber-400", dot: "bg-amber-500",  label: "Средний",  badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400" },
-  low:    { bg: "bg-emerald-50 dark:bg-emerald-950/50", border: "border-emerald-200 dark:border-emerald-800", text: "text-emerald-700 dark:text-emerald-400", dot: "bg-emerald-500", label: "Низкий", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400" },
-}
-
-/* ══════════════════════════════════════════════════════
-   RISK ALGORITHMS
-══════════════════════════════════════════════════════ */
-function calcSET(fc: DayForecast[], base = 10) {
-  return Math.round(fc.reduce((s, d) => s + Math.max(0, (d.tempMax + d.tempMin) / 2 - base), 0))
-}
-function phytophthoraRisk(fc: DayForecast[]): RiskLevel {
-  let streak = 0, max = 0
-  for (const d of fc) { const a = (d.tempMax + d.tempMin) / 2; if (a >= 10 && a <= 25 && d.precipitation >= 0.5) { streak++; max = Math.max(max, streak) } else streak = 0 }
-  if (max >= 3) return "high"; if (max >= 2) return "medium"
-  if (fc.some(d => { const a = (d.tempMax+d.tempMin)/2; return a>=10&&a<=25&&d.precipitation>0 })) return "medium"
-  return "low"
-}
-function locustRisk(fc: DayForecast[]): RiskLevel {
-  let streak = 0, max = 0
-  for (const d of fc) { const a = (d.tempMax+d.tempMin)/2; if (a>22&&d.precipitation<1) { streak++; max = Math.max(max, streak) } else streak=0 }
-  return max >= 5 ? "high" : max >= 3 ? "medium" : "low"
-}
-function aphidRisk(fc: DayForecast[]): RiskLevel {
-  const n = fc.filter(d => (d.tempMax+d.tempMin)/2 > 12).length
-  return n >= 5 ? "high" : n >= 3 ? "medium" : "low"
-}
-function coloradoBeetleRisk(set: number): RiskLevel { return set >= 230 ? "high" : set >= 120 ? "medium" : "low" }
-function septoriaRisk(fc: DayForecast[]): RiskLevel {
-  let streak = 0, max = 0
-  for (const d of fc) { const a=(d.tempMax+d.tempMin)/2; if (a>=15&&a<=22&&d.precipitation>=1) { streak++; max=Math.max(max,streak) } else streak=0 }
-  return max >= 3 ? "high" : max >= 1 ? "medium" : "low"
-}
-function computeRisks(fc: DayForecast[], set: number): PestRisks {
-  return { phytophthora: phytophthoraRisk(fc), locust: locustRisk(fc), aphid: aphidRisk(fc), coloradoBeetle: coloradoBeetleRisk(set), septoria: septoriaRisk(fc) }
-}
-function overallRisk(risks: PestRisks, pests: (keyof PestRisks)[]): RiskLevel {
-  const l = pests.map(p => risks[p])
-  return l.includes("high") ? "high" : l.includes("medium") ? "medium" : "low"
-}
-
-/* ══════════════════════════════════════════════════════
-   API
-══════════════════════════════════════════════════════ */
-async function fetchWeatherFull(lat: number, lon: number): Promise<FarmWeather> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,weather_code&timezone=Asia%2FAlmaty&forecast_days=7`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  const data = await res.json()
-  const forecast: DayForecast[] = (data.daily.time as string[]).map((date: string, i: number) => ({
-    date, tempMax: data.daily.temperature_2m_max[i]??0, tempMin: data.daily.temperature_2m_min[i]??0,
-    precipitation: data.daily.precipitation_sum[i]??0, weatherCode: data.daily.weather_code[i]??0,
-    windMax: data.daily.wind_speed_10m_max[i]??0,
-  }))
-  const set7  = calcSET(forecast)
-  const risks = computeRisks(forecast, set7)
-  return {
-    forecast, set7, risks, loading: false,
-    currentTemp: data.current?.temperature_2m, currentHumidity: data.current?.relative_humidity_2m,
-    currentWind: data.current?.wind_speed_10m,  currentWeatherCode: data.current?.weather_code,
+function nearestField(fields: Field[], lat: number, lng: number): Field {
+  let best = fields[0]
+  let bestDist = Infinity
+  for (const field of fields) {
+    const d = haversineKm(lat, lng, field.lat, field.lng)
+    if (d < bestDist) {
+      bestDist = d
+      best = field
+    }
   }
+  return best
 }
 
-/* ══════════════════════════════════════════════════════
-   SMALL UI
-══════════════════════════════════════════════════════ */
-function wmoEmoji(code?: number) {
-  if (code === undefined) return "🌡️"
-  if (code <= 1) return "☀️"; if (code <= 3) return "⛅"; if (code <= 48) return "🌫️"
-  if (code <= 55) return "🌦️"; if (code <= 65) return "🌧️"; if (code <= 75) return "❄️"
-  if (code <= 82) return "⛈️"; return "⛈️"
-}
-function tempColor(t: number) {
-  if (t < -5) return "text-blue-500"; if (t < 5) return "text-cyan-500"
-  if (t < 15) return "text-green-600"; if (t < 28) return "text-yellow-600"; return "text-red-600"
-}
-function TempBar({ max, min, absMax, absMin }: { max: number; min: number; absMax: number; absMin: number }) {
-  const range = absMax - absMin || 1
-  const left  = ((min - absMin) / range) * 100
-  const width = Math.max(((max - min) / range) * 100, 6)
-  const color = max > 28 ? "bg-red-400" : max > 18 ? "bg-amber-400" : max > 8 ? "bg-green-400" : "bg-blue-400"
-  return (
-    <div className="relative h-1.5 w-full rounded-full bg-muted overflow-hidden">
-      <div className={`absolute h-full rounded-full ${color}`} style={{ left: `${left}%`, width: `${width}%` }} />
-    </div>
-  )
-}
-function RiskPill({ level, name }: { level: RiskLevel; name: string }) {
-  const s = RISK_STYLE[level]
-  return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${s.badge}`}>
-      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
-      {name}
-    </span>
-  )
-}
-function SetBar({ value }: { value: number }) {
-  const pct = Math.min(100, (value / 350) * 100)
-  const color = value >= 230 ? "bg-red-500" : value >= 120 ? "bg-amber-500" : "bg-emerald-500"
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-bold w-20 text-right tabular-nums">{value}°C·сут</span>
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════════════════
-   WEATHER DETAIL PANEL
-══════════════════════════════════════════════════════ */
-function WeatherDetail({ w, absMax, absMin, pests }: { w: FarmWeather; absMax: number; absMin: number; pests: (keyof PestRisks)[] }) {
-  return (
-    <div className="mt-3 border-t pt-3 space-y-3 bg-muted/20 rounded-b-xl px-0">
-      {/* СЭТ */}
-      <div className="space-y-1">
-        <div className="flex justify-between text-xs font-medium">
-          <span>СЭТ (база +10°C, 7 дней)</span>
-        </div>
-        <SetBar value={w.set7} />
-        <div className="text-[10px] text-muted-foreground">Колорадский жук активен при СЭТ ≥ 230°C·сут</div>
-      </div>
-
-      {/* 7-day forecast */}
-      <div>
-        <div className="text-xs font-semibold mb-1.5">Прогноз 7 дней</div>
-        <div className="space-y-1">
-          {w.forecast.map((day, i) => {
-            const d = new Date(day.date)
-            const label = i === 0 ? "Сегодня" : i === 1 ? "Завтра" : `${d.getDate()}.${String(d.getMonth()+1).padStart(2,"0")} ${DAYS_RU[d.getDay()]}`
-            return (
-              <div key={day.date} className="flex items-center gap-2 text-xs">
-                <span className="w-20 shrink-0 text-muted-foreground">{label}</span>
-                <span className="w-5 text-center text-sm leading-none">{wmoEmoji(day.weatherCode)}</span>
-                <div className="flex-1"><TempBar max={day.tempMax} min={day.tempMin} absMax={absMax} absMin={absMin} /></div>
-                <span className="w-20 text-right font-mono text-xs font-medium">{Math.round(day.tempMin)}° / {Math.round(day.tempMax)}°</span>
-                <span className={`w-14 text-right tabular-nums text-xs ${day.precipitation > 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
-                  {day.precipitation > 0 ? `${day.precipitation.toFixed(1)}мм` : "—"}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Pest risks */}
-      <div>
-        <div className="text-xs font-semibold mb-1.5">Риски вредителей</div>
-        <div className="grid gap-1">
-          {pests.map(pest => {
-            const level = w.risks[pest]
-            const s = RISK_STYLE[level]
-            return (
-              <div key={pest} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 border ${s.bg} ${s.border}`}>
-                <div>
-                  <div className={`text-xs font-semibold ${s.text}`}>{PEST_META[pest].name}</div>
-                  <div className={`text-[10px] ${s.text} opacity-70`}>{PEST_META[pest].threshold}</div>
-                </div>
-                <div className={`flex items-center gap-1.5 ml-2 ${s.text}`}>
-                  <span className={`h-2 w-2 rounded-full ${s.dot}`} />
-                  <span className="text-xs font-bold">{s.label}</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Extra */}
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground border-t pt-2">
-        {w.currentHumidity !== undefined && <span>💧 Влажность: <b>{w.currentHumidity}%</b></span>}
-        {w.currentWind !== undefined && <span>💨 Ветер: <b>{w.currentWind} км/ч</b></span>}
-      </div>
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════════════════
-   FARM CARD
-══════════════════════════════════════════════════════ */
-function FarmCard({
-  farm, weather, pests, absMax, absMin, isSelected, onSelect,
-}: {
-  farm: OsmFarm; weather?: FarmWeather; pests: (keyof PestRisks)[]
-  absMax: number; absMin: number; isSelected: boolean; onSelect: () => void
-}) {
-  const overall = weather && !weather.loading && !weather.error
-    ? overallRisk(weather.risks, pests) : null
-  const rs = overall ? RISK_STYLE[overall] : null
-
-  return (
-    <div
-      id={`farm-${farm.id}`}
-      onClick={onSelect}
-      className={`rounded-xl border bg-card shadow-sm cursor-pointer transition-all hover:shadow-md select-none ${
-        isSelected ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : ""
-      } ${rs ? rs.border : ""}`}
-    >
-      <div className="p-3.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-sm truncate">{farm.name ?? "Безымянное поле"}</span>
-            </div>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {farm.oblast && (
-                <span className="rounded bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 text-[10px] text-blue-700 dark:text-blue-300 font-medium">
-                  {farm.oblast}
-                </span>
-              )}
-              {farm.district && (
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium">
-                  {farm.district}
-                </span>
-              )}
-            </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-              {farm.lat.toFixed(4)}°N {farm.lon.toFixed(4)}°E
-            </div>
-          </div>
-
-          {/* Temp / risk badge */}
-          {weather?.loading ? (
-            <div className="h-10 w-14 animate-pulse rounded-lg bg-muted shrink-0" />
-          ) : weather && !weather.error && rs && overall ? (
-            <div className={`rounded-lg px-2 py-1.5 text-center ${rs.bg} border ${rs.border} shrink-0`}>
-              <div className={`text-lg font-bold leading-none ${tempColor(weather.currentTemp ?? 0)}`}>
-                {weather.currentTemp}°
-              </div>
-              <div className={`text-[9px] font-bold ${rs.text} mt-0.5`}>{rs.label}</div>
-            </div>
-          ) : !weather ? (
-            <span className="text-[10px] text-muted-foreground shrink-0 self-center">▼ Нажмите</span>
-          ) : null}
-        </div>
-
-        {/* Active risk pills */}
-        {weather && !weather.loading && !weather.error && (
-          <div className="flex flex-wrap gap-1 mt-2">
-            {pests.filter(p => weather.risks[p] !== "low").length === 0 ? (
-              <span className="text-xs text-muted-foreground">Рисков не выявлено</span>
-            ) : (
-              pests.filter(p => weather.risks[p] !== "low").map(p => (
-                <RiskPill key={p} level={weather.risks[p]} name={PEST_META[p].name} />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* 5-day mini strip */}
-        {weather && !weather.loading && !weather.error && weather.forecast.length >= 5 && (
-          <div className="flex gap-0.5 mt-2">
-            {weather.forecast.slice(0, 5).map((day, i) => {
-              const d = new Date(day.date)
-              return (
-                <div key={day.date} className="flex-1 text-center space-y-0.5">
-                  <div className="text-[9px] text-muted-foreground">{i === 0 ? "Сег" : DAYS_RU[d.getDay()]}</div>
-                  <div className="text-xs">{wmoEmoji(day.weatherCode)}</div>
-                  <div className="text-[10px] font-semibold">{Math.round(day.tempMax)}°</div>
-                  <TempBar max={day.tempMax} min={day.tempMin} absMax={absMax} absMin={absMin} />
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {isSelected && weather && !weather.loading && !weather.error && (
-          <WeatherDetail w={weather} absMax={absMax} absMin={absMin} pests={pests} />
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════════════════
-   PAGE
-══════════════════════════════════════════════════════ */
 export default function ForecastPage() {
-  const [osmFarms, setOsmFarms]     = useState<OsmFarm[]>([])
-  const [farmsReady, setFarmsReady] = useState(false)
-  const [culture, setCulture]       = useState<CultureFilter>("all")
-  const [viewMode, setViewMode]     = useState<"list" | "map">("list")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedOblast, setSelectedOblast] = useState<string | null>(null)
-  const [selectedDistrict, setSelectedDistrict] = useState<string | null>(null)
-  const [selectedFarm, setSelectedFarm]     = useState<string | null>(null)
-  const [weatherCache, setWeatherCache]     = useState<Record<string, FarmWeather>>({})
-  const [page, setPage] = useState(0)
-  const PAGE_SIZE = 24
+  const [fields, setFields] = useState<Field[]>(DEMO_FIELDS)
+  const [selectedField, setSelectedField] = useState<Field | null>(DEMO_FIELDS[0] ?? null)
+  const [weather, setWeather] = useState<WeatherDay[]>([])
+  const [risks, setRisks] = useState<PestRisk[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const actionsRef = useRef<HTMLElement>(null)
+  const geoApplied = useRef(false)
 
-  // Load OSM farms (with oblast + district from enrich script)
   useEffect(() => {
-    fetch("/kz-farms.json")
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: OsmFarm[]) => {
-        setOsmFarms(data)
-        setFarmsReady(true)
+    let cancelled = false
+    ;(async () => {
+      const fromFirebase = await fetchFieldsFromFirebase()
+      if (cancelled) return
+      const list = fromFirebase.length > 0 ? fromFirebase : DEMO_FIELDS
+      setFields(list)
+      setSelectedField((prev) => {
+        if (prev && list.some((f) => f.id === prev.id)) return prev
+        return list[0] ?? null
       })
-      .catch(() => setFarmsReady(true))
-  }, [])
-
-  const pests = CULTURE_PESTS[culture]
-
-  // All unique oblasts
-  const oblasts = useMemo(() => {
-    const set = new Set(osmFarms.map(f => f.oblast).filter(Boolean) as string[])
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"))
-  }, [osmFarms])
-
-  const districts = useMemo(() => {
-    let source = osmFarms
-    if (selectedOblast) source = source.filter(f => f.oblast === selectedOblast)
-    const set = new Set(source.map(f => f.district).filter(Boolean) as string[])
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"))
-  }, [osmFarms, selectedOblast])
-
-  const filteredFarms = useMemo(() => {
-    let result = osmFarms
-    if (selectedOblast) result = result.filter(f => f.oblast === selectedOblast)
-    if (selectedDistrict) result = result.filter(f => f.district === selectedDistrict)
-    const q = searchQuery.trim().toLowerCase()
-    if (q) {
-      result = result.filter(f =>
-        (f.name?.toLowerCase().includes(q)) ||
-        (f.oblast?.toLowerCase().includes(q)) ||
-        (f.district?.toLowerCase().includes(q)) ||
-        f.id.toLowerCase().includes(q) ||
-        `${f.lat.toFixed(2)} ${f.lon.toFixed(2)}`.includes(q)
-      )
+    })()
+    return () => {
+      cancelled = true
     }
-    return result
-  }, [osmFarms, selectedOblast, selectedDistrict, searchQuery])
-
-  const resetFilters = useCallback(() => {
-    setSearchQuery("")
-    setSelectedOblast(null)
-    setSelectedDistrict(null)
   }, [])
 
-  // Reset page when filter changes
-  useEffect(() => { setPage(0); setSelectedFarm(null) }, [searchQuery, selectedOblast, selectedDistrict, culture])
+  useEffect(() => {
+    if (geoApplied.current || fields.length === 0) return
+    if (!navigator.geolocation) return
 
-  const pagedFarms = filteredFarms.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(filteredFarms.length / PAGE_SIZE)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        geoApplied.current = true
+        const { latitude, longitude } = pos.coords
+        setSelectedField(nearestField(fields, latitude, longitude))
+      },
+      () => {
+        geoApplied.current = true
+      },
+      { timeout: 8000, maximumAge: 600_000 }
+    )
+  }, [fields])
 
-  // Fetch weather for a specific farm
-  const fetchFarmWeather = useCallback(async (farm: OsmFarm) => {
-    if (weatherCache[farm.id] && !weatherCache[farm.id].loading) return
-    setWeatherCache(prev => ({ ...prev, [farm.id]: { ...( prev[farm.id] ?? { forecast: [], set7: 0, risks: { ...EMPTY_RISKS } }), loading: true } }))
+  const loadForecast = useCallback(async (field: Field) => {
+    setLoading(true)
+    setError(null)
     try {
-      const weather = await fetchWeatherFull(farm.lat, farm.lon)
-      setWeatherCache(prev => ({ ...prev, [farm.id]: weather }))
+      const rawDays = await fetchWeather(field.lat, field.lng)
+      const days = enrichDaysWithRisk(rawDays, field.crop)
+      let computed = calcAllRisks(days, field.crop)
+
+      const samples = await fetchRecentSamples(field.lat, field.lng)
+      if (samples.length > 0) {
+        computed = applySamplesToRisks(computed, samples)
+      }
+
+      setWeather(days)
+      setRisks(computed)
     } catch {
-      setWeatherCache(prev => ({ ...prev, [farm.id]: { forecast: [], set7: 0, risks: { ...EMPTY_RISKS }, loading: false, error: true } }))
+      setError("Не удалось загрузить погоду. Проверь интернет.")
+      setWeather([])
+      setRisks([])
+    } finally {
+      setLoading(false)
     }
-  }, [weatherCache])
+  }, [])
 
-  const handleSelectFarm = useCallback((farm: OsmFarm) => {
-    setSelectedFarm(prev => prev === farm.id ? null : farm.id)
-    fetchFarmWeather(farm)
-    setTimeout(() => {
-      document.getElementById(`farm-${farm.id}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    }, 80)
-  }, [fetchFarmWeather])
+  useEffect(() => {
+    if (!selectedField) return
+    loadForecast(selectedField)
+  }, [selectedField, loadForecast])
 
-  // Map callbacks
-  const overallRiskForMap = useCallback(
-    (risks: PestRisks) => overallRisk(risks, pests), [pests]
-  )
-  const handleMapSelectFarm = useCallback((id: string) => {
-    const farm = osmFarms.find(f => f.id === id)
-    if (!farm) return
-    setSelectedFarm(id)
-    if (farm.oblast) setSelectedOblast(farm.oblast)
-    if (farm.district) setSelectedDistrict(farm.district)
-    setSearchQuery(farm.name ?? farm.district ?? "")
-    fetchFarmWeather(farm)
-  }, [osmFarms, fetchFarmWeather])
+  const overallLevel =
+    risks.length === 0
+      ? "safe"
+      : risks[0].riskLevel === 2
+        ? "danger"
+        : risks[0].riskLevel === 1
+          ? "warning"
+          : "safe"
 
-  // absMax/absMin for TempBars
-  const cachedForecasts = Object.values(weatherCache).flatMap(w => w.forecast ?? [])
-  const absMax = cachedForecasts.length ? Math.max(...cachedForecasts.map(d => d.tempMax)) : 40
-  const absMin = cachedForecasts.length ? Math.min(...cachedForecasts.map(d => d.tempMin)) : -10
+  const alertText = {
+    safe: {
+      title: "Всё в порядке",
+      subtitle: "Угроз на ваших полях не обнаружено",
+    },
+    warning: {
+      title: "Следи за ситуацией",
+      subtitle: risks[0]?.triggerReason || "Погода может способствовать вредителям",
+    },
+    danger: {
+      title: `Опасность: ${risks[0]?.name ?? "вредитель"}`,
+      subtitle: risks[0]?.recommendation || "Нужно действовать в ближайшие дни",
+    },
+  }[overallLevel]
 
-  // Stats from loaded weather
-  const loadedWeathers = Object.values(weatherCache).filter(w => !w.loading && !w.error)
-  const highCount   = loadedWeathers.filter(w => overallRisk(w.risks, pests) === "high").length
-  const mediumCount = loadedWeathers.filter(w => overallRisk(w.risks, pests) === "medium").length
-  const avgTemp = loadedWeathers.length
-    ? (loadedWeathers.reduce((s, w) => s + (w.currentTemp ?? 0), 0) / loadedWeathers.length).toFixed(1)
-    : null
+  const scrollToActions = () => {
+    actionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   return (
-    <main className="min-h-screen bg-background pb-10">
+    <div className="min-h-screen bg-background">
       <Navigation />
-      <div className="mx-auto max-w-[1600px] p-4 space-y-4">
 
-        {/* ── HEADER ── */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">Фитосанитарный прогноз</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {farmsReady
-                ? `${osmFarms.length.toLocaleString()} полей Казахстана (OSM) · Феноло­гические модели + Open-Meteo`
-                : "Загрузка базы полей…"}
-              {loadedWeathers.length > 0 && ` · Загружено прогнозов: ${loadedWeathers.length}`}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            {avgTemp && <StatCard label="Ср. температура" value={`${avgTemp}°C`} />}
-            {highCount > 0 && <StatCard label="🔴 Высокий риск" value={`${highCount} полей`} cls="text-red-600 dark:text-red-400" />}
-            {mediumCount > 0 && <StatCard label="🟡 Средний риск" value={`${mediumCount} полей`} cls="text-amber-600 dark:text-amber-400" />}
-
-            {/* View toggle */}
-            <div className="flex rounded-lg border overflow-hidden shadow-sm">
-              {(["list", "map"] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium transition-colors border-l first:border-l-0 ${
-                    viewMode === mode ? "bg-foreground text-background" : "bg-card hover:bg-muted"
-                  }`}
-                >
-                  {mode === "list"
-                    ? <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>Список</>
-                    : <><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>Карта</>
-                  }
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ── CULTURE FILTER ── */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {(Object.keys(CULTURE_LABELS) as CultureFilter[]).map(c => (
-            <button key={c} onClick={() => setCulture(c)}
-              className={`rounded-lg border px-3.5 py-1.5 text-sm font-medium transition-all ${
-                culture === c ? "bg-foreground text-background border-foreground shadow-sm" : "bg-card hover:bg-muted"
-              }`}>
-              {CULTURE_LABELS[c]}
-            </button>
-          ))}
-          <span className="ml-auto text-xs text-muted-foreground hidden sm:block">
-            Прогноз 7 дней · Open-Meteo API
-          </span>
-        </div>
-
-        {/* ── ACTIVE PEST THRESHOLDS ── */}
-        <div className="flex flex-wrap gap-2">
-          {pests.map(p => (
-            <div key={p} className="flex items-center gap-1.5 rounded-lg border bg-card px-2.5 py-1 text-xs">
-              <span className="font-semibold">{PEST_META[p].name}</span>
-              <span className="text-muted-foreground">·</span>
-              <span className="text-muted-foreground">{PEST_META[p].threshold}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* ── SEARCH + FILTERS (list + map) ── */}
-        <div className="rounded-xl border bg-card p-3 shadow-sm space-y-3">
-          <div className="flex flex-col lg:flex-row gap-2">
-            <div className="relative flex-1">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Поиск: поле, район, область, координаты…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border bg-background pl-9 pr-9 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-sm">✕</button>
-              )}
-            </div>
-
-            <select
-              value={selectedOblast ?? ""}
-              onChange={e => {
-                setSelectedOblast(e.target.value || null)
-                setSelectedDistrict(null)
-              }}
-              className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 lg:w-56"
-            >
-              <option value="">Все области</option>
-              {oblasts.map(o => (
-                <option key={o} value={o}>
-                  {o} ({osmFarms.filter(f => f.oblast === o).length})
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedDistrict ?? ""}
-              onChange={e => setSelectedDistrict(e.target.value || null)}
-              disabled={districts.length === 0}
-              className="rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 lg:w-56 disabled:opacity-50"
-            >
-              <option value="">Все районы</option>
-              {districts.map(d => (
-                <option key={d} value={d}>
-                  {d} ({osmFarms.filter(f => (!selectedOblast || f.oblast === selectedOblast) && f.district === d).length})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
-              {filteredFarms.length === osmFarms.length
-                ? `Все ${osmFarms.length.toLocaleString()} полей`
-                : `Найдено: ${filteredFarms.length.toLocaleString()} из ${osmFarms.length.toLocaleString()}`}
-              {selectedOblast && ` · Область: ${selectedOblast}`}
-              {selectedDistrict && ` · Район: ${selectedDistrict}`}
-            </p>
-            {(searchQuery || selectedOblast || selectedDistrict) && (
-              <button onClick={resetFilters} className="text-xs text-primary hover:underline">
-                Сбросить фильтры
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ══ MAP VIEW ══ */}
-        {viewMode === "map" && (
-          <ForecastMap
-            regions={[]}
-            overallRiskFn={overallRiskForMap}
-            onSelectRegion={handleMapSelectFarm}
-            osmFarms={filteredFarms}
-            totalFarms={osmFarms.length}
-            selectedFarmId={selectedFarm}
+      <div className="mx-auto min-h-[calc(100vh-50px)] max-w-md bg-background pb-24">
+        <div className="px-4 pt-4 pb-2">
+          <h1 className="mb-3 text-lg font-semibold">Прогноз для поля</h1>
+          <FieldSelector
+            fields={fields}
+            selectedField={selectedField}
+            onSelect={setSelectedField}
           />
+        </div>
+
+        <div className="px-4">
+          {loading ? (
+            <div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Загрузка прогноза" />
+          ) : error ? (
+            <div className="rounded-xl bg-red-50 p-6 text-base text-red-800">{error}</div>
+          ) : (
+            <AlertBanner
+              level={overallLevel}
+              title={alertText.title}
+              subtitle={alertText.subtitle}
+              onActionClick={overallLevel === "danger" ? scrollToActions : undefined}
+            />
+          )}
+        </div>
+
+        {!loading && !error && weather.length > 0 && (
+          <section className="px-4 py-4">
+            <p className="mb-3 text-sm font-medium text-muted-foreground">Прогноз на 7 дней</p>
+            <WeatherStrip days={weather} />
+          </section>
         )}
 
-        {/* ══ LIST VIEW ══ */}
-        {viewMode === "list" && (
-          <div className="space-y-4">
-
-            {/* Farm cards grid */}
-            {filteredFarms.length === 0 ? (
-              <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
-                <div className="text-4xl mb-2">🔍</div>
-                <div className="font-medium">Поля не найдены</div>
-                <div className="text-sm mt-1">Измените область, район или поисковый запрос</div>
-              </div>
-            ) : (
-              <>
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {pagedFarms.map(farm => (
-                    <FarmCard
-                      key={farm.id}
-                      farm={farm}
-                      weather={weatherCache[farm.id]}
-                      pests={pests}
-                      absMax={absMax}
-                      absMin={absMin}
-                      isSelected={selectedFarm === farm.id}
-                      onSelect={() => handleSelectFarm(farm)}
-                    />
-                  ))}
-                </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 pt-2">
-                    <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}
-                      className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-muted">← Пред.</button>
-                    <span className="text-sm text-muted-foreground">
-                      Страница {page + 1} из {totalPages} · Показано {pagedFarms.length} из {filteredFarms.length}
-                    </span>
-                    <button onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page >= totalPages-1}
-                      className="rounded-lg border px-3 py-1.5 text-sm disabled:opacity-40 hover:bg-muted">След. →</button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+        {!loading && !error && risks.length > 0 && (
+          <section className="px-4 py-2">
+            <p className="mb-3 text-sm font-medium text-muted-foreground">Фитосанитарные риски</p>
+            <div className="flex flex-col gap-3">
+              {risks.map((risk) => (
+                <PestRiskCard key={risk.pestId} risk={risk} />
+              ))}
+            </div>
+          </section>
         )}
 
-        <p className="text-center text-[11px] text-muted-foreground pt-2">
-          Данные полей: OpenStreetMap (Overpass API) · Погода: Open-Meteo API · Модели рисков: феноло­гические пороги
-        </p>
+        <section ref={actionsRef} className="px-4 py-4">
+          <p className="mb-3 text-sm font-medium text-muted-foreground">Что делать</p>
+          <ActionList risks={risks} fieldId={selectedField?.id ?? "default"} />
+        </section>
       </div>
-    </main>
-  )
-}
-
-function StatCard({ label, value, cls = "" }: { label: string; value: string; cls?: string }) {
-  return (
-    <div className="rounded-xl border bg-card px-4 py-2.5 text-center shadow-sm min-w-[90px]">
-      <div className="text-[10px] text-muted-foreground mb-0.5">{label}</div>
-      <div className={`text-sm font-bold ${cls}`}>{value}</div>
     </div>
   )
 }

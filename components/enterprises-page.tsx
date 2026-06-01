@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { EnterprisesList } from "@/components/enterprises-list"
 import { EnterpriseDetails } from "@/components/enterprise-details"
 import { CreateEnterpriseDialog, type CreateEnterpriseData } from "@/components/create-enterprise-dialog"
-import { mockEnterprises, masterCollections } from "@/lib/mock-data"
+import { masterCollections } from "@/lib/mock-data"
 import type { Enterprise } from "@/lib/types"
 import {
   getEnterprises,
@@ -27,10 +27,11 @@ export function EnterprisesPage() {
     return "Unknown error"
   }
 
-  const [enterprises, setEnterprises] = useState<Enterprise[]>(mockEnterprises)
-  const [selectedId, setSelectedId] = useState<string | null>(mockEnterprises[0]?.id || null)
+  const [enterprises, setEnterprises] = useState<Enterprise[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const selectedEnterprise = enterprises.find((e) => e.id === selectedId)
 
@@ -41,19 +42,17 @@ export function EnterprisesPage() {
       try {
         const firestoreEnterprises = await getEnterprises()
         if (!isMounted) return
-
-        if (firestoreEnterprises.length > 0) {
-          setEnterprises(firestoreEnterprises)
-          setSelectedId(firestoreEnterprises[0].id)
-        } else {
-          setEnterprises(mockEnterprises)
-          setSelectedId(mockEnterprises[0]?.id || null)
-        }
+        setLoadError(null)
+        setEnterprises(firestoreEnterprises)
+        setSelectedId(firestoreEnterprises[0]?.id ?? null)
       } catch (error) {
-        console.warn("Firestore is unavailable, using local mock enterprises.", error)
+        console.error("Failed to load enterprises from Firestore.", error)
         if (!isMounted) return
-        setEnterprises(mockEnterprises)
-        setSelectedId(mockEnterprises[0]?.id || null)
+        const msg = getErrorMessage(error)
+        setLoadError(msg)
+        setEnterprises([])
+        setSelectedId(null)
+        toast.error(`Не удалось загрузить предприятия: ${msg}`)
       } finally {
         if (isMounted) setIsLoading(false)
       }
@@ -216,6 +215,11 @@ export function EnterprisesPage() {
 
   return (
     <>
+      {loadError && (
+        <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          Ошибка Firestore: {loadError}. Проверьте правила и домен в Firebase Console (polevoitest).
+        </div>
+      )}
       <div className="grid h-[calc(100vh-50px)] grid-cols-[1fr_1.2fr]">
         <EnterprisesList
           enterprises={enterprises}

@@ -14,3 +14,9 @@ next.user-config.*
 node_modules
 .next/
 .DS_Store
+
+# Firestore backup (local export, may contain business data)
+data/firestore-backup/enterprises.json
+data/firestore-backup/journal.env
+data/firestore-backup/env.fmis-admin-panel.backup
+.vercel

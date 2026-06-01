@@ -34,8 +34,15 @@ function getFirebaseApp(): FirebaseApp {
   return app;
 }
 
+const firestoreDatabaseId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID?.trim();
+
 export function getDb() {
-  return getFirestore(getFirebaseApp());
+  const app = getFirebaseApp();
+  // Пусто или "(default)" → основная база Firestore
+  if (!firestoreDatabaseId || firestoreDatabaseId === "(default)") {
+    return getFirestore(app);
+  }
+  return getFirestore(app, firestoreDatabaseId);
 }
 
 export function getStorageClient() {

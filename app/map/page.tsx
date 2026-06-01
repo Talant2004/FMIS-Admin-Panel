@@ -12,7 +12,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { getEnterprises } from "@/lib/firestore-enterprises"
-import { mockEnterprises } from "@/lib/mock-data"
 import type { Enterprise } from "@/lib/types"
 
 const EnterprisesMap = dynamic(
@@ -23,6 +22,7 @@ const EnterprisesMap = dynamic(
 export default function MapPage() {
   const [enterprises, setEnterprises] = useState<Enterprise[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [zoomToEnterpriseId, setZoomToEnterpriseId] = useState<string | null>(null)
   const [zoomToFieldId, setZoomToFieldId] = useState<string | null>(null)
   const [zoomRequestToken, setZoomRequestToken] = useState(0)
@@ -40,14 +40,16 @@ export default function MapPage() {
     ;(async () => {
       try {
         const data = await getEnterprises()
-        const prepared = data.length ? data : mockEnterprises
         if (!isMounted) return
-        setEnterprises(prepared)
-        setSelectedId(prepared[0]?.id ?? null)
-      } catch {
+        setLoadError(null)
+        setEnterprises(data)
+        setSelectedId(data[0]?.id ?? null)
+      } catch (error) {
+        console.error("Failed to load enterprises from Firestore.", error)
         if (!isMounted) return
-        setEnterprises(mockEnterprises)
-        setSelectedId(mockEnterprises[0]?.id ?? null)
+        setLoadError(error instanceof Error ? error.message : "Неизвестная ошибка")
+        setEnterprises([])
+        setSelectedId(null)
       }
     })()
 
@@ -59,6 +61,11 @@ export default function MapPage() {
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
+      {loadError && (
+        <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          Ошибка Firestore: {loadError}
+        </div>
+      )}
       <div className="grid h-[calc(100vh-50px)] grid-cols-[1.4fr_1fr]">
         <div className="h-full">
           <div className="border-b p-3 text-sm font-medium">Карта полей</div>
