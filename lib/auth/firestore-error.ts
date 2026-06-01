@@ -6,4 +6,4 @@ export function isPermissionDenied(error: unknown): boolean {
 }
 
 export const PERMISSION_DENIED_HINT =
-  "Нет доступа к Firestore. Войдите через Google. Для всего журнала нужен email администратора в правилах isAdmin()."
+  "Нет доступа к данным. Войдите в аккаунт или проверьте правила Firestore для коллекции samples."

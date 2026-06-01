@@ -3,7 +3,6 @@
 import { Loader2 } from "lucide-react"
 import { useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
-import { getAdminEmails } from "@/lib/auth/admin"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,8 +24,6 @@ export function SignInPanel({
   const [name, setName] = useState("")
   const [busy, setBusy] = useState(false)
   const [showGoogle, setShowGoogle] = useState(false)
-  const adminEmails = getAdminEmails()
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     clearAuthError()
@@ -164,11 +161,8 @@ export function SignInPanel({
         </Button>
       ) : null}
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        Для доступа ко <strong>всему</strong> журналу email должен быть в{" "}
-        <code className="text-[11px]">isAdmin()</code> в Firestore (
-        {adminEmails.join(", ")}). Свой email можно добавить в правила Firebase. В Firebase включите{" "}
-        <strong>Email/Password</strong> в Authentication → Sign-in method.
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        В Firebase включите <strong>Email/Password</strong>: Authentication → Sign-in method.
       </p>
     </div>
   )

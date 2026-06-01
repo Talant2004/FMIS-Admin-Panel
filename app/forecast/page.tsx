@@ -56,7 +56,7 @@ export default function ForecastPage() {
 }
 
 function ForecastPageContent() {
-  const { user, isAdmin } = useAuth()
+  const { user } = useAuth()
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
@@ -200,12 +200,6 @@ function ForecastPageContent() {
             {!fieldsLoading && fields.length > 0 ? ` · ${fields.length}` : ""}
             {user?.email ? ` · ${user.email}` : ""}
           </p>
-          {!isAdmin && !fieldsLoading && !fieldsError ? (
-            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Вы вошли как обычный пользователь — видны только ваши осмотры. Для всего журнала используйте
-              аккаунт администратора.
-            </p>
-          ) : null}
           <FieldSelector
             fields={fields}
             selectedField={selectedField}
