@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
+import { useAuth } from "@/components/auth/auth-provider"
+import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
+import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,9 +19,6 @@ const JournalMap = dynamic(
   { ssr: false }
 )
 
-const PERMISSION_HINT =
-  "Добавьте временное правило read для samples и users в Firebase Console (polevoitest), пока на сайте нет входа."
-
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="rounded-lg border bg-card px-4 py-3">
@@ -28,7 +28,8 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-export default function JournalPage() {
+function JournalPageContent() {
+  const { user } = useAuth()
   const [samples, setSamples] = useState<FieldSample[]>([])
   const [users, setUsers] = useState<JournalUser[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -51,7 +52,13 @@ export default function JournalPage() {
       } catch (error) {
         console.error("Failed to load field journal data.", error)
         if (!isMounted) return
-        setLoadError(error instanceof Error ? error.message : "Неизвестная ошибка")
+        setLoadError(
+          isPermissionDenied(error)
+            ? PERMISSION_DENIED_HINT
+            : error instanceof Error
+              ? error.message
+              : "Неизвестная ошибка"
+        )
         setSamples([])
         setUsers([])
         setSelectedId(null)
@@ -64,7 +71,7 @@ export default function JournalPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [user?.uid])
 
   const usersById = useMemo(() => {
     const map = new Map<string, JournalUser>()
@@ -129,9 +136,6 @@ export default function JournalPage() {
   }, [samples])
 
   return (
-    <main className="min-h-screen bg-background">
-      <Navigation />
-
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -160,7 +164,6 @@ export default function JournalPage() {
         {loadError && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <div>Ошибка Firestore: {loadError}</div>
-            <div className="mt-1 text-xs opacity-90">{PERMISSION_HINT}</div>
           </div>
         )}
 
@@ -355,6 +358,19 @@ export default function JournalPage() {
           </div>
         )}
       </div>
+  )
+}
+
+export default function JournalPage() {
+  return (
+    <main className="min-h-screen bg-background">
+      <Navigation />
+      <RequireAuth
+        title="Вход в полевой журнал"
+        description="Коллекции samples и users защищены правилами Firebase. Войдите через Google."
+      >
+        <JournalPageContent />
+      </RequireAuth>
     </main>
   )
 }

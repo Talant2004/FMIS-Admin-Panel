@@ -2,6 +2,8 @@
 
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
 import { AlertBanner } from "@/components/forecast/AlertBanner"
 import { ActionList } from "@/components/forecast/ActionList"
@@ -23,6 +25,7 @@ import {
 import { fetchWeather } from "@/lib/forecast/fetchWeather"
 import type { Field, PestRisk, WeatherDay } from "@/lib/forecast/types"
 import type { JournalSample } from "@/lib/journal/samples"
+import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
 import { haversineKm } from "@/lib/journal/samples"
 
 function nearestField(fields: Field[], lat: number, lng: number): Field {
@@ -39,6 +42,21 @@ function nearestField(fields: Field[], lat: number, lng: number): Field {
 }
 
 export default function ForecastPage() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      <RequireAuth
+        title="Вход для прогноза"
+        description="Прогноз строится по точкам полевого журнала. Нужен вход через Google."
+      >
+        <ForecastPageContent />
+      </RequireAuth>
+    </div>
+  )
+}
+
+function ForecastPageContent() {
+  const { user, isAdmin } = useAuth()
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
@@ -66,9 +84,13 @@ export default function ForecastPage() {
           if (prev && list.some((f) => f.id === prev.id)) return prev
           return list[0] ?? null
         })
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          setFieldsError("Не удалось загрузить точки из полевого журнала.")
+          setFieldsError(
+            isPermissionDenied(err)
+              ? PERMISSION_DENIED_HINT
+              : "Не удалось загрузить точки из полевого журнала."
+          )
           setFields([])
         }
       } finally {
@@ -78,7 +100,7 @@ export default function ForecastPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [user?.uid])
 
   useEffect(() => {
     if (geoApplied.current || fields.length === 0) return
@@ -170,16 +192,20 @@ export default function ForecastPage() {
   const showForecast = Boolean(selectedField) && !fieldsLoading && fields.length > 0
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
-
       <div className="mx-auto min-h-[calc(100vh-50px)] max-w-md bg-background pb-24">
         <div className="px-4 pt-4 pb-2">
           <h1 className="mb-3 text-lg font-semibold">Прогноз для поля</h1>
           <p className="mb-3 text-xs text-muted-foreground">
             Только точки из полевого журнала
             {!fieldsLoading && fields.length > 0 ? ` · ${fields.length}` : ""}
+            {user?.email ? ` · ${user.email}` : ""}
           </p>
+          {!isAdmin && !fieldsLoading && !fieldsError ? (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Вы вошли как обычный пользователь — видны только ваши осмотры. Для всего журнала используйте
+              аккаунт администратора.
+            </p>
+          ) : null}
           <FieldSelector
             fields={fields}
             selectedField={selectedField}
@@ -253,6 +279,5 @@ export default function ForecastPage() {
           </section>
         )}
       </div>
-    </div>
   )
 }

@@ -1,4 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -20,6 +21,7 @@ const requiredKeys = [
 ];
 
 let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
 
 function getFirebaseApp(): FirebaseApp {
   const hasRequiredConfig = requiredKeys.every(Boolean);
@@ -35,6 +37,13 @@ function getFirebaseApp(): FirebaseApp {
 }
 
 const firestoreDatabaseId = process.env.NEXT_PUBLIC_FIRESTORE_DATABASE_ID?.trim();
+
+export function getAuthClient(): Auth {
+  if (!auth) {
+    auth = getAuth(getFirebaseApp());
+  }
+  return auth;
+}
 
 export function getDb() {
   const app = getFirebaseApp();

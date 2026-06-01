@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { UserMenu } from "@/components/auth/user-menu"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -20,6 +21,7 @@ export function Navigation() {
   return (
     <nav className="border-b border-border bg-background">
       <div className="flex items-center gap-1 px-4 py-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
         {navItems.map((item, index) => (
           <span key={item.label} className="flex items-center">
             <Link
@@ -38,6 +40,8 @@ export function Navigation() {
             )}
           </span>
         ))}
+        </div>
+        <UserMenu />
       </div>
     </nav>
   )

@@ -1,7 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useAuth } from "@/components/auth/auth-provider"
+import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
+import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
 import { CropPieChart } from "@/components/analytics/CropPieChart"
 import { DamageTimelineChart } from "@/components/analytics/DamageTimelineChart"
 import { ExportButton } from "@/components/analytics/ExportButton"
@@ -20,7 +23,8 @@ import {
 import type { RawSample } from "@/lib/analytics/types"
 import { cn } from "@/lib/utils"
 
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
+  const { user } = useAuth()
   const [mode, setMode] = useState<"overview" | "detailed">("overview")
   const [dateRange, setDateRange] = useState(30)
   const [groupBy, setGroupBy] = useState<"day" | "week">("day")
@@ -37,9 +41,13 @@ export default function AnalyticsPage() {
       .then((data) => {
         if (!cancelled) setSamples(data)
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
-          setError("Не удалось загрузить данные. Проверьте правила Firestore для samples.")
+          setError(
+            isPermissionDenied(err)
+              ? PERMISSION_DENIED_HINT
+              : "Не удалось загрузить данные. Проверьте правила Firestore для samples."
+          )
           setSamples([])
         }
       })
@@ -50,7 +58,7 @@ export default function AnalyticsPage() {
     return () => {
       cancelled = true
     }
-  }, [dateRange])
+  }, [dateRange, user?.uid])
 
   const summary = useMemo(() => calcSummary(samples), [samples])
   const topPests = useMemo(() => calcTopPests(samples), [samples])
@@ -59,9 +67,6 @@ export default function AnalyticsPage() {
   const inspectorStats = useMemo(() => calcInspectorStats(samples), [samples])
 
   return (
-    <main className="min-h-screen bg-background">
-      <Navigation />
-
       <div className="mx-auto max-w-7xl p-4 md:p-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -152,6 +157,19 @@ export default function AnalyticsPage() {
           </>
         )}
       </div>
+  )
+}
+
+export default function AnalyticsPage() {
+  return (
+    <main className="min-h-screen bg-background">
+      <Navigation />
+      <RequireAuth
+        title="Вход для аналитики"
+        description="Аналитика строится по записям полевого журнала. Войдите через Google."
+      >
+        <AnalyticsPageContent />
+      </RequireAuth>
     </main>
   )
 }
