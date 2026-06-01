@@ -1,3 +1,5 @@
+import { getJournalUsers } from "@/lib/firestore-journal"
+import { enrichSamplesWithInspectors } from "@/lib/journal/inspectors"
 import { fetchJournalSamples } from "@/lib/journal/samples"
 import type {
   AnalyticsSummary,
@@ -9,9 +11,13 @@ import type {
   TimelinePoint,
 } from "./types"
 
-/** Все точки полевого журнала за период. */
+/** Все точки полевого журнала за период (с email инспектора из users). */
 export async function fetchAllSamples(days = 90): Promise<RawSample[]> {
-  return fetchJournalSamples(days, 500)
+  const [samples, users] = await Promise.all([
+    fetchJournalSamples(days, 500),
+    getJournalUsers().catch(() => []),
+  ])
+  return enrichSamplesWithInspectors(samples, users)
 }
 
 function startOfWeek(d: Date): Date {
@@ -118,7 +124,7 @@ export function calcInspectorStats(samples: RawSample[]): InspectorStat[] {
   >()
 
   for (const s of samples) {
-    const key = s.inspector || "Неизвестно"
+    const key = s.inspector?.trim() || "Неизвестно"
     const prev = map.get(key) ?? {
       total: 0,
       damageSum: 0,

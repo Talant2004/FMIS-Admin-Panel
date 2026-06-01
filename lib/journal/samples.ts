@@ -1,6 +1,7 @@
 import { collection, getDocs, limit, orderBy, query, Timestamp, where } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
 import { readCoordinates } from "@/lib/journal-format"
+import { inspectorFromSampleData } from "@/lib/journal/inspectors"
 import type { Field } from "@/lib/forecast/types"
 
 export interface JournalSample {
@@ -48,7 +49,7 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
   return {
     id,
     date,
-    inspector: String(data.inspector ?? data.inspectorName ?? data.userName ?? "Неизвестно"),
+    inspector: inspectorFromSampleData(data),
     pest: String(data.pest ?? data.pestName ?? "").trim(),
     crop: String(data.crop ?? data.cropName ?? "другое").trim().toLowerCase(),
     damageLevel: Number(data.damageLevel ?? data.damage ?? 0) || 0,
