@@ -10,6 +10,7 @@ const navItems = [
   { label: "Предприятия", href: "/" },
   { label: "Карта", href: "/map" },
   { label: "Полевой журнал", href: "/journal" },
+  { label: "Инспекторы", href: "/inspectors" },
   { label: "Прогноз", href: "/forecast" },
   { label: "Аналитика", href: "/analytics" },
   { label: "Настройки", href: "/settings" },
