@@ -1,6 +1,13 @@
-# Вход через Google (полевой журнал)
+# Вход в панель (полевой журнал)
 
-## Firebase Console
+## Firebase Console — Email/Password (рекомендуется)
+
+1. **Authentication** → **Sign-in method** → **Email/Password** → **Enable** → Save.
+2. Регистрация на сайте: вкладка **Регистрация** → email + пароль (минимум 6 символов).
+
+Домены Authorized domains для email/password **обычно не мешают** — в отличие от Google.
+
+## Google (опционально)
 
 1. **Authentication** → **Sign-in method** → включите **Google** → Save.
 2. **Authentication** → **Settings** → **Authorized domains** — добавьте:

@@ -1,10 +1,13 @@
 "use client"
 
 import {
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
+  updateProfile,
   type User,
 } from "firebase/auth"
 import {
@@ -17,6 +20,7 @@ import {
   type ReactNode,
 } from "react"
 import { isAdminEmail } from "@/lib/auth/admin"
+import { mapAuthError } from "@/lib/auth/errors"
 import { getAuthClient } from "@/lib/firebase"
 
 type AuthContextValue = {
@@ -24,6 +28,8 @@ type AuthContextValue = {
   loading: boolean
   isAdmin: boolean
   signInWithGoogle: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<void>
   signOut: () => Promise<void>
   authError: string | null
   clearAuthError: () => void
@@ -34,17 +40,10 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: "select_account" })
 
-function mapAuthError(code: string): string {
-  switch (code) {
-    case "auth/popup-closed-by-user":
-      return "Окно входа закрыто. Попробуйте ещё раз."
-    case "auth/unauthorized-domain":
-      return "Домен не разрешён в Firebase. Добавьте localhost и ваш URL в Authentication → Authorized domains."
-    case "auth/operation-not-allowed":
-      return "Вход через Google не включён в Firebase Console (Authentication → Sign-in method)."
-    default:
-      return "Не удалось войти. Попробуйте снова."
-  }
+function authErrorFromUnknown(err: unknown): string {
+  const code =
+    err && typeof err === "object" && "code" in err ? String((err as { code: string }).code) : ""
+  return mapAuthError(code)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -66,12 +65,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signInWithPopup(getAuthClient(), googleProvider)
     } catch (err: unknown) {
-      const code =
-        err && typeof err === "object" && "code" in err ? String((err as { code: string }).code) : ""
-      setAuthError(mapAuthError(code))
+      setAuthError(authErrorFromUnknown(err))
       throw err
     }
   }, [])
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    setAuthError(null)
+    try {
+      await signInWithEmailAndPassword(getAuthClient(), email.trim(), password)
+    } catch (err: unknown) {
+      setAuthError(authErrorFromUnknown(err))
+      throw err
+    }
+  }, [])
+
+  const signUpWithEmail = useCallback(
+    async (email: string, password: string, displayName?: string) => {
+      setAuthError(null)
+      try {
+        const cred = await createUserWithEmailAndPassword(
+          getAuthClient(),
+          email.trim(),
+          password
+        )
+        const name = displayName?.trim()
+        if (name) {
+          await updateProfile(cred.user, { displayName: name })
+        }
+      } catch (err: unknown) {
+        setAuthError(authErrorFromUnknown(err))
+        throw err
+      }
+    },
+    []
+  )
 
   const signOut = useCallback(async () => {
     setAuthError(null)
@@ -84,11 +112,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isAdmin: isAdminEmail(user?.email),
       signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
       signOut,
       authError,
       clearAuthError: () => setAuthError(null),
     }),
-    [user, loading, signInWithGoogle, signOut, authError]
+    [user, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut, authError]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

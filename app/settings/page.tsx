@@ -39,7 +39,7 @@ export default function SettingsPage() {
         ) : (
           <SignInPanel
             title="Войдите в панель"
-            description="Google-аккаунт нужен для журнала, прогноза и аналитики."
+            description="Зарегистрируйтесь по email или войдите — без Google."
           />
         )}
 

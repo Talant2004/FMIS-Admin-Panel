@@ -1,7 +1,7 @@
 "use client"
 
 import { Loader2, LogOut } from "lucide-react"
-import { useState } from "react"
+import Link from "next/link"
 import { useAuth } from "@/components/auth/auth-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -15,8 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 export function UserMenu() {
-  const { user, loading, isAdmin, signInWithGoogle, signOut } = useAuth()
-  const [busy, setBusy] = useState(false)
+  const { user, loading, isAdmin, signOut } = useAuth()
 
   if (loading) {
     return <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
@@ -24,23 +23,8 @@ export function UserMenu() {
 
   if (!user) {
     return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="ml-auto shrink-0"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true)
-          try {
-            await signInWithGoogle()
-          } finally {
-            setBusy(false)
-          }
-        }}
-      >
-        {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-        Войти
+      <Button variant="outline" size="sm" className="ml-auto shrink-0" asChild>
+        <Link href="/settings">Войти</Link>
       </Button>
     )
   }
