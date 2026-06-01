@@ -14,10 +14,11 @@ function pickString(...values: FirestoreValue[]): string | undefined {
 export function inspectorFromSampleData(data: Record<string, FirestoreValue>): string {
   return (
     pickString(
+      data.fullName,
+      data.userEmail,
       data.inspector,
       data.inspectorName,
       data.userName,
-      data.userEmail,
       data.inspectorEmail,
       data.email,
       data.authorEmail,

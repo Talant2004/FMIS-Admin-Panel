@@ -1,7 +1,13 @@
 import { collection, getDocs, limit, orderBy, query, Timestamp, where } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
-import { readCoordinates } from "@/lib/journal-format"
 import { inspectorFromSampleData } from "@/lib/journal/inspectors"
+import {
+  parseProbeMeta,
+  probePrimaryTarget,
+  probeSeverityScore,
+  resolveCoordinates,
+  readPhotoUrls,
+} from "@/lib/journal/probe-parse"
 import type { Field } from "@/lib/forecast/types"
 
 export interface JournalSample {
@@ -18,6 +24,16 @@ export interface JournalSample {
   photo?: string
   notes?: string
   userId?: string
+  monitoringType?: string
+  researchDiscipline?: string
+  farmingName?: string
+  userEmail?: string
+  fullName?: string
+  weatherTemperature?: number
+  weatherHumidity?: number
+  weatherWindSpeed?: number
+  thresholdExceeded?: boolean
+  photoUrls?: string[]
 }
 
 type FirestoreValue = unknown
@@ -27,9 +43,13 @@ function isRecord(value: FirestoreValue): value is Record<string, FirestoreValue
 }
 
 export function parseJournalSample(id: string, data: Record<string, FirestoreValue>): JournalSample {
-  const { latitude, longitude } = readCoordinates(data)
+  const { latitude, longitude } = resolveCoordinates(data)
   const lat = latitude
   const lng = longitude
+  const meta = parseProbeMeta(id, data)
+  const photos = readPhotoUrls(data)
+  const target = probePrimaryTarget(data)
+  const severity = probeSeverityScore(data)
 
   let date = new Date()
   const rawDate = data.date ?? data.timestamp ?? data.createdAt ?? data.sampleDate ?? data.recordedAt
@@ -50,9 +70,9 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
     id,
     date,
     inspector: inspectorFromSampleData(data),
-    pest: String(data.pest ?? data.pestName ?? "").trim(),
-    crop: String(data.crop ?? data.cropName ?? "другое").trim().toLowerCase(),
-    damageLevel: Number(data.damageLevel ?? data.damage ?? 0) || 0,
+    pest: target || "—",
+    crop: (meta.crop ?? "другое").trim().toLowerCase(),
+    damageLevel: severity,
     lat,
     lng,
     fieldId:
@@ -60,11 +80,23 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
         ? data.fieldId
         : typeof data.field_id === "string"
           ? data.field_id
-          : undefined,
+          : meta.farmingName
+            ? `farm:${meta.farmingName}`
+            : undefined,
     enterpriseId: typeof data.enterpriseId === "string" ? data.enterpriseId : undefined,
     userId: typeof data.userId === "string" ? data.userId : typeof data.uid === "string" ? data.uid : undefined,
-    photo: typeof data.photo === "string" ? data.photo : typeof data.photoUrl === "string" ? data.photoUrl : undefined,
-    notes: typeof data.notes === "string" ? data.notes : typeof data.comment === "string" ? data.comment : undefined,
+    photo: photos[0],
+    photoUrls: photos.length ? photos : undefined,
+    notes: meta.comment,
+    monitoringType: meta.monitoringType,
+    researchDiscipline: meta.researchDiscipline,
+    farmingName: meta.farmingName,
+    userEmail: meta.userEmail,
+    fullName: meta.fullName,
+    weatherTemperature: meta.weather?.temperature,
+    weatherHumidity: meta.weather?.humidity,
+    weatherWindSpeed: meta.weather?.windSpeed,
+    thresholdExceeded: meta.thresholdExceeded,
   }
 }
 
@@ -147,7 +179,8 @@ export function fieldsFromJournalSamples(samples: JournalSample[]): Field[] {
     const sorted = [...group].sort((a, b) => b.date.getTime() - a.date.getTime())
     const latest = sorted[0]
     const crop = modeString(group.map((s) => s.crop))
-    const pestLabel = latest.pest || "Осмотр"
+    const place = latest.farmingName || latest.pest || "Проба"
+    const pestLabel = latest.pest && latest.pest !== "—" ? latest.pest : place
     const dateLabel = latest.date.toLocaleDateString("ru-RU", {
       day: "2-digit",
       month: "2-digit",

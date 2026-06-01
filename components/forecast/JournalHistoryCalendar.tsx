@@ -97,9 +97,16 @@ export function JournalHistoryCalendar({ samples, className }: JournalHistoryCal
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {s.crop}
+                  {s.monitoringType ? ` · ${s.monitoringType}` : ""}
                   {s.damageLevel > 0 ? ` · ущерб: ${damageLabel(s.damageLevel)}` : ""}
                   {s.inspector ? ` · ${s.inspector}` : ""}
                 </p>
+                {s.weatherTemperature !== undefined || s.weatherHumidity !== undefined ? (
+                  <p className="text-xs text-muted-foreground">
+                    Погода: {s.weatherTemperature ?? "—"} °C
+                    {s.weatherHumidity !== undefined ? `, ${s.weatherHumidity} %` : ""}
+                  </p>
+                ) : null}
                 {s.notes ? <p className="mt-1 text-xs">{s.notes}</p> : null}
               </li>
             ))}

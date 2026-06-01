@@ -10,8 +10,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { ProbeDetailCard } from "@/components/journal/probe-detail-card"
 import { getJournalData } from "@/lib/firestore-journal"
 import { damageBadgeClass, formatSampleDate } from "@/lib/journal-format"
+import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 const JournalMap = dynamic(
@@ -80,6 +82,8 @@ function JournalPageContent() {
   }, [users])
 
   const inspectorLabel = (sample: FieldSample) => {
+    if (sample.fullName) return sample.fullName
+    if (sample.userEmail) return sample.userEmail
     if (!sample.userId) return "Инспектор не указан"
     const user = usersById.get(sample.userId)
     return user?.displayName ?? user?.email ?? sample.userId
@@ -141,7 +145,7 @@ function JournalPageContent() {
           <div>
             <h1 className="text-lg font-semibold">Полевой журнал</h1>
             <p className="text-sm text-muted-foreground">
-              Данные из мобильного приложения Flutter — коллекции samples и users
+              Пробы учёных (Firestore · samples): энтомология, фитопатология, гербология
             </p>
           </div>
 
@@ -228,8 +232,9 @@ function JournalPageContent() {
                 <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                   <tr>
                     <th className="border px-2 py-1 text-left">Дата</th>
+                    <th className="border px-2 py-1 text-left">Тип</th>
                     <th className="border px-2 py-1 text-left">Инспектор</th>
-                    <th className="border px-2 py-1 text-left">Вредитель</th>
+                    <th className="border px-2 py-1 text-left">Объект учёта</th>
                     <th className="border px-2 py-1 text-left">Культура</th>
                     <th className="border px-2 py-1 text-left">Поражение</th>
                     <th className="border px-2 py-1 text-left">Координаты</th>
@@ -244,13 +249,13 @@ function JournalPageContent() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={7 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={8 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
                         Загрузка данных полевого журнала...
                       </td>
                     </tr>
                   ) : filteredSamples.length === 0 ? (
                     <tr>
-                      <td colSpan={7 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={8 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
                         Записи не найдены
                       </td>
                     </tr>
@@ -264,8 +269,13 @@ function JournalPageContent() {
                         onClick={() => setSelectedId(sample.id)}
                       >
                         <td className="border px-2 py-1 whitespace-nowrap">{formatSampleDate(sample.createdAt)}</td>
+                        <td className="border px-2 py-1 text-xs">
+                          {sample.monitoringType
+                            ? monitoringTypeLabel(sample.monitoringType)
+                            : "—"}
+                        </td>
                         <td className="border px-2 py-1">{inspectorLabel(sample)}</td>
-                        <td className="border px-2 py-1">{sample.pest ?? "—"}</td>
+                        <td className="border px-2 py-1 max-w-[180px] truncate">{sample.pest ?? "—"}</td>
                         <td className="border px-2 py-1">{sample.crop ?? "—"}</td>
                         <td className="border px-2 py-1">
                           {sample.damageLevel ? (
@@ -313,6 +323,7 @@ function JournalPageContent() {
               <ScrollArea className="h-[calc(100%-41px)]">
                 {selectedSample ? (
                   <div className="space-y-3 p-3 text-sm">
+                    <ProbeDetailCard sample={selectedSample} />
                     <div>
                       <div className="text-xs text-muted-foreground">ID записи</div>
                       <div className="font-medium">{selectedSample.id}</div>

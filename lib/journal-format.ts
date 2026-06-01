@@ -1,4 +1,11 @@
 import { GeoPoint } from "firebase/firestore"
+import {
+  parseProbeMeta,
+  probePrimaryTarget,
+  probeSeverityScore,
+  resolveCoordinates,
+  readPhotoUrls,
+} from "@/lib/journal/probe-parse"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 type FirestoreValue = unknown
@@ -124,27 +131,38 @@ export function flattenFirestoreData(data: Record<string, FirestoreValue>): Reco
 
 export function parseSampleFromFirestore(id: string, data: Record<string, FirestoreValue>): FieldSample {
   const fields = flattenFirestoreData(data)
-  const { latitude, longitude } = readCoordinates(data)
-
-  const photoUrl =
-    pickFirstString(data, ["photoUrl", "imageUrl", "photo", "image", "pictureUrl"]) ??
-    (Array.isArray(data.photoUrls) ? readString(data.photoUrls[0]) : undefined) ??
-    (Array.isArray(data.images) ? readString(data.images[0]) : undefined)
+  const coords = resolveCoordinates(data)
+  const meta = parseProbeMeta(id, data)
+  const photos = readPhotoUrls(data)
+  const severity = probeSeverityScore(data)
 
   return {
     id,
     userId: pickFirstString(data, ["userId", "uid", "authorId", "inspectorId"]),
-    latitude,
-    longitude,
-    pest: pickFirstString(data, ["pest", "pestName", "insect", "disease", "vreditel", "pathogen"]),
-    crop: pickFirstString(data, ["crop", "cropName", "culture", "plant", "kultura"]),
-    damageLevel: pickFirstString(data, ["damageLevel", "damage", "severity", "level", "degree", "infestation"]),
-    notes: pickFirstString(data, ["notes", "comment", "description", "note", "remarks"]),
-    photoUrl,
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    pest: probePrimaryTarget(data) || pickFirstString(data, ["pest", "pestName", "insect"]),
+    crop: meta.crop ?? pickFirstString(data, ["crop", "cropName", "culture", "plant", "kultura"]),
+    damageLevel: String(severity),
+    notes: meta.comment ?? pickFirstString(data, ["notes", "comment", "description", "note", "remarks"]),
+    photoUrl: photos[0],
     createdAt: readTimestamp(
       data.createdAt ?? data.timestamp ?? data.date ?? data.sampleDate ?? data.recordedAt
     ),
     fields,
+    monitoringType: meta.monitoringType,
+    researchDiscipline: meta.researchDiscipline,
+    farmingName: meta.farmingName,
+    variety: meta.variety,
+    cropStage: meta.cropStage,
+    userEmail: meta.userEmail,
+    fullName: meta.fullName,
+    weatherTemperature: meta.weather?.temperature,
+    weatherHumidity: meta.weather?.humidity,
+    weatherWindSpeed: meta.weather?.windSpeed,
+    thresholdExceeded: meta.thresholdExceeded,
+    pestAverage: meta.pestAverage,
+    sampleValuesLength: meta.sampleValuesLength,
   }
 }
 
