@@ -19,7 +19,11 @@ const CROP_EMOJI: Record<string, string> = {
 function fieldLabel(field: Field): string {
   const emoji = CROP_EMOJI[field.crop.toLowerCase()] ?? "🌱"
   const area = field.area ? `, ${field.area} га` : ""
-  return `${emoji} ${field.name} — ${field.crop}${area}`
+  const journal =
+    field.source === "journal" && field.samplesCount
+      ? ` · журнал (${field.samplesCount})`
+      : ""
+  return `${emoji} ${field.name} — ${field.crop}${area}${journal}`
 }
 
 export interface FieldSelectorProps {

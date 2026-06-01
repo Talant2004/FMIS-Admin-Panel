@@ -6,6 +6,12 @@ export interface Field {
   lat: number
   lng: number
   enterpriseId?: string
+  /** Точка из полевого журнала (samples) */
+  source?: "journal" | "enterprise"
+  sampleIds?: string[]
+  samplesCount?: number
+  lastPest?: string
+  lastDamageLevel?: number
 }
 
 export type RiskLevel = 0 | 1 | 2

@@ -1,0 +1,51 @@
+import type { JournalSample } from "@/lib/journal/samples"
+
+/** Запись полевого журнала (коллекция Firebase `samples`). */
+export type RawSample = JournalSample
+
+export interface AnalyticsSummary {
+  totalSamples: number
+  uniquePests: number
+  uniqueInspectors: number
+  avgDamageLevel: number
+  samplesThisWeek: number
+  samplesLastWeek: number
+}
+
+export interface PestCount {
+  pest: string
+  count: number
+  avgDamage: number
+}
+
+export interface TimelinePoint {
+  date: string
+  count: number
+  avgDamage: number
+}
+
+export interface CropShare {
+  crop: string
+  count: number
+  percent: number
+}
+
+export interface InspectorStat {
+  inspector: string
+  totalSamples: number
+  lastActivity: Date
+  avgDamage: number
+  uniquePests: number
+}
+
+export interface RegionPestCell {
+  region: string
+  pest: string
+  count: number
+  maxDamage: number
+}
+
+export interface PestWeekRow {
+  pest: string
+  weeks: { label: string; count: number }[]
+}

@@ -1,6 +1,8 @@
+import { fetchJournalSamples, fieldsFromJournalSamples } from "@/lib/journal/samples"
 import { getEnterprises } from "@/lib/firestore-enterprises"
 import type { Enterprise } from "@/lib/types"
 import type { Field } from "./types"
+import { DEMO_FIELDS } from "./types"
 
 function guessCrop(enterprise: Enterprise): string {
   const haystack = `${enterprise.name} ${enterprise.shortName} ${enterprise.tags.join(" ")}`.toLowerCase()
@@ -63,6 +65,7 @@ export function fieldsFromEnterprises(enterprises: Enterprise[]): Field[] {
         lat: fallbackLat,
         lng: fallbackLng,
         enterpriseId: enterprise.id,
+        source: "enterprise",
       })
       continue
     }
@@ -81,6 +84,7 @@ export function fieldsFromEnterprises(enterprises: Enterprise[]): Field[] {
         lat: center.lat,
         lng: center.lng,
         enterpriseId: enterprise.id,
+        source: "enterprise",
       })
     })
   }
@@ -91,9 +95,20 @@ export function fieldsFromEnterprises(enterprises: Enterprise[]): Field[] {
 export async function fetchFieldsFromFirebase(): Promise<Field[]> {
   try {
     const enterprises = await getEnterprises()
-    const fields = fieldsFromEnterprises(enterprises)
-    return fields
+    return fieldsFromEnterprises(enterprises)
   } catch {
     return []
   }
+}
+
+/** Поля для прогноза: сначала точки из полевого журнала, затем предприятия, затем демо. */
+export async function fetchForecastFields(): Promise<Field[]> {
+  const samples = await fetchJournalSamples(365, 500)
+  const journalFields = fieldsFromJournalSamples(samples)
+  if (journalFields.length > 0) return journalFields
+
+  const enterpriseFields = await fetchFieldsFromFirebase()
+  if (enterpriseFields.length > 0) return enterpriseFields
+
+  return DEMO_FIELDS
 }

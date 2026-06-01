@@ -12,10 +12,14 @@ import {
   calcAllRisks,
   enrichDaysWithRisk,
 } from "@/lib/forecast/calcRisks"
-import { fetchFieldsFromFirebase } from "@/lib/forecast/fetchFields"
-import { fetchRecentSamples } from "@/lib/forecast/fetchSamples"
+import { fetchForecastFields } from "@/lib/forecast/fetchFields"
+import {
+  clearJournalSamplesCache,
+  fetchSamplesForField,
+  loadJournalSamplesCache,
+} from "@/lib/forecast/fetchSamples"
 import { fetchWeather } from "@/lib/forecast/fetchWeather"
-import { DEMO_FIELDS, type Field, type PestRisk, type WeatherDay } from "@/lib/forecast/types"
+import type { Field, PestRisk, WeatherDay } from "@/lib/forecast/types"
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
@@ -41,8 +45,9 @@ function nearestField(fields: Field[], lat: number, lng: number): Field {
 }
 
 export default function ForecastPage() {
-  const [fields, setFields] = useState<Field[]>(DEMO_FIELDS)
-  const [selectedField, setSelectedField] = useState<Field | null>(DEMO_FIELDS[0] ?? null)
+  const [fields, setFields] = useState<Field[]>([])
+  const [selectedField, setSelectedField] = useState<Field | null>(null)
+  const [fieldsSource, setFieldsSource] = useState<"journal" | "enterprise" | "demo">("journal")
   const [weather, setWeather] = useState<WeatherDay[]>([])
   const [risks, setRisks] = useState<PestRisk[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,11 +57,14 @@ export default function ForecastPage() {
 
   useEffect(() => {
     let cancelled = false
+    clearJournalSamplesCache()
     ;(async () => {
-      const fromFirebase = await fetchFieldsFromFirebase()
+      await loadJournalSamplesCache()
+      const list = await fetchForecastFields()
       if (cancelled) return
-      const list = fromFirebase.length > 0 ? fromFirebase : DEMO_FIELDS
       setFields(list)
+      const source = list[0]?.source ?? "demo"
+      setFieldsSource(source === "journal" ? "journal" : source === "enterprise" ? "enterprise" : "demo")
       setSelectedField((prev) => {
         if (prev && list.some((f) => f.id === prev.id)) return prev
         return list[0] ?? null
@@ -92,7 +100,7 @@ export default function ForecastPage() {
       const days = enrichDaysWithRisk(rawDays, field.crop)
       let computed = calcAllRisks(days, field.crop)
 
-      const samples = await fetchRecentSamples(field.lat, field.lng)
+      const samples = await fetchSamplesForField(field)
       if (samples.length > 0) {
         computed = applySamplesToRisks(computed, samples)
       }
@@ -148,6 +156,13 @@ export default function ForecastPage() {
       <div className="mx-auto min-h-[calc(100vh-50px)] max-w-md bg-background pb-24">
         <div className="px-4 pt-4 pb-2">
           <h1 className="mb-3 text-lg font-semibold">Прогноз для поля</h1>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {fieldsSource === "journal"
+              ? `Точки из полевого журнала (${fields.length})`
+              : fieldsSource === "enterprise"
+                ? "Поля предприятий (журнал пуст)"
+                : "Демо-поля (нет данных журнала)"}
+          </p>
           <FieldSelector
             fields={fields}
             selectedField={selectedField}
