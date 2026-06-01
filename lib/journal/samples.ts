@@ -1,5 +1,6 @@
 import { collection, getDocs, limit, orderBy, query, Timestamp, where } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
+import { readCoordinates } from "@/lib/journal-format"
 import type { Field } from "@/lib/forecast/types"
 
 export interface JournalSample {
@@ -25,23 +26,12 @@ function isRecord(value: FirestoreValue): value is Record<string, FirestoreValue
 }
 
 export function parseJournalSample(id: string, data: Record<string, FirestoreValue>): JournalSample {
-  const lat =
-    typeof data.lat === "number"
-      ? data.lat
-      : typeof data.latitude === "number"
-        ? data.latitude
-        : undefined
-  const lng =
-    typeof data.lng === "number"
-      ? data.lng
-      : typeof data.longitude === "number"
-        ? data.longitude
-        : typeof data.lon === "number"
-          ? data.lon
-          : undefined
+  const { latitude, longitude } = readCoordinates(data)
+  const lat = latitude
+  const lng = longitude
 
   let date = new Date()
-  const rawDate = data.date ?? data.timestamp ?? data.createdAt
+  const rawDate = data.date ?? data.timestamp ?? data.createdAt ?? data.sampleDate ?? data.recordedAt
   if (rawDate instanceof Timestamp) date = rawDate.toDate()
   else if (rawDate instanceof Date) date = rawDate
   else if (isRecord(rawDate) && typeof rawDate.toDate === "function") {
@@ -83,24 +73,40 @@ export async function fetchJournalSamples(days = 365, maxDocs = 500): Promise<Jo
   since.setDate(since.getDate() - days)
   since.setHours(0, 0, 0, 0)
 
-  const db = getDb()
+  const col = collection(getDb(), "samples")
+  const sinceTs = Timestamp.fromDate(since)
 
-  try {
-    const q = query(
-      collection(db, "samples"),
-      where("date", ">=", Timestamp.fromDate(since)),
-      orderBy("date", "desc"),
-      limit(maxDocs)
-    )
-    const snap = await getDocs(q)
-    return snap.docs.map((doc) => parseJournalSample(doc.id, doc.data() as Record<string, FirestoreValue>))
-  } catch {
-    const fallback = query(collection(db, "samples"), orderBy("date", "desc"), limit(maxDocs))
-    const snap = await getDocs(fallback)
-    return snap.docs
-      .map((doc) => parseJournalSample(doc.id, doc.data() as Record<string, FirestoreValue>))
-      .filter((s) => s.date >= since)
+  const queries = [
+    () => query(col, where("date", ">=", sinceTs), orderBy("date", "desc"), limit(maxDocs)),
+    () => query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
+    () => query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
+    () => query(col, orderBy("date", "desc"), limit(maxDocs)),
+    () => query(col, limit(maxDocs)),
+    () => query(col),
+  ]
+
+  for (const build of queries) {
+    try {
+      const snap = await getDocs(build())
+      const samples = snap.docs.map((doc) =>
+        parseJournalSample(doc.id, doc.data() as Record<string, FirestoreValue>)
+      )
+      if (samples.length === 0) continue
+
+      return samples
+        .filter((s) => s.date >= since)
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+        .slice(0, maxDocs)
+    } catch {
+      continue
+    }
   }
+
+  return []
+}
+
+export function countSamplesWithCoordinates(samples: JournalSample[]): number {
+  return samples.filter((s) => s.lat !== undefined && s.lng !== undefined).length
 }
 
 function modeString(values: string[]): string {

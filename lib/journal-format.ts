@@ -1,3 +1,4 @@
+import { GeoPoint } from "firebase/firestore"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 type FirestoreValue = unknown
@@ -37,7 +38,21 @@ function readTimestamp(value: FirestoreValue): string | undefined {
   return readString(value)
 }
 
-function readCoordinates(data: Record<string, FirestoreValue>): { latitude?: number; longitude?: number } {
+function coordsFromGeoPoint(value: FirestoreValue): { latitude?: number; longitude?: number } {
+  if (value instanceof GeoPoint) {
+    return { latitude: value.latitude, longitude: value.longitude }
+  }
+  if (isRecord(value) && typeof value.latitude === "number" && typeof value.longitude === "number") {
+    return { latitude: value.latitude, longitude: value.longitude }
+  }
+  return {}
+}
+
+/** Координаты из документа Firestore (как в Flutter: lat/lng, GeoPoint, location, строки). */
+export function readCoordinates(data: Record<string, FirestoreValue>): {
+  latitude?: number
+  longitude?: number
+} {
   const directLat = readNumber(data.latitude ?? data.lat)
   const directLon = readNumber(data.longitude ?? data.lng ?? data.lon)
 
@@ -45,12 +60,18 @@ function readCoordinates(data: Record<string, FirestoreValue>): { latitude?: num
     return { latitude: directLat, longitude: directLon }
   }
 
-  const location = data.location ?? data.coords ?? data.coordinates ?? data.geoPoint
-  if (isRecord(location)) {
-    const latitude = readNumber(location.latitude ?? location.lat ?? location.x)
-    const longitude = readNumber(location.longitude ?? location.lng ?? location.lon ?? location.y)
-    if (latitude !== undefined && longitude !== undefined) {
-      return { latitude, longitude }
+  for (const key of ["location", "coords", "coordinates", "geoPoint", "geopoint", "position", "gps"]) {
+    const nested = coordsFromGeoPoint(data[key])
+    if (nested.latitude !== undefined && nested.longitude !== undefined) {
+      return nested
+    }
+    const box = data[key]
+    if (isRecord(box)) {
+      const latitude = readNumber(box.latitude ?? box.lat ?? box.x)
+      const longitude = readNumber(box.longitude ?? box.lng ?? box.lon ?? box.y)
+      if (latitude !== undefined && longitude !== undefined) {
+        return { latitude, longitude }
+      }
     }
   }
 

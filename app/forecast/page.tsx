@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { AdminAccessCard } from "@/components/auth/admin-access-card"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { RequireAuth } from "@/components/auth/require-auth"
@@ -17,7 +16,7 @@ import {
   calcAllRisks,
   enrichDaysWithRisk,
 } from "@/lib/forecast/calcRisks"
-import { fetchForecastFields } from "@/lib/forecast/fetchFields"
+import { fieldsFromJournalSamples } from "@/lib/journal/samples"
 import {
   clearJournalSamplesCache,
   fetchSamplesForField,
@@ -25,7 +24,10 @@ import {
 } from "@/lib/forecast/fetchSamples"
 import { fetchWeather } from "@/lib/forecast/fetchWeather"
 import type { Field, PestRisk, WeatherDay } from "@/lib/forecast/types"
-import type { JournalSample } from "@/lib/journal/samples"
+import {
+  countSamplesWithCoordinates,
+  type JournalSample,
+} from "@/lib/journal/samples"
 import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
 import { haversineKm } from "@/lib/journal/samples"
 
@@ -63,6 +65,7 @@ function ForecastPageContent() {
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
   const [fieldsLoading, setFieldsLoading] = useState(true)
   const [fieldsError, setFieldsError] = useState<string | null>(null)
+  const [journalStats, setJournalStats] = useState({ total: 0, withCoords: 0 })
   const [weather, setWeather] = useState<WeatherDay[]>([])
   const [risks, setRisks] = useState<PestRisk[]>([])
   const [forecastLoading, setForecastLoading] = useState(false)
@@ -77,9 +80,13 @@ function ForecastPageContent() {
     setFieldsError(null)
     ;(async () => {
       try {
-        await loadJournalSamplesCache()
-        const list = await fetchForecastFields()
+        const allSamples = await loadJournalSamplesCache()
         if (cancelled) return
+        setJournalStats({
+          total: allSamples.length,
+          withCoords: countSamplesWithCoordinates(allSamples),
+        })
+        const list = fieldsFromJournalSamples(allSamples)
         setFields(list)
         setSelectedField((prev) => {
           if (prev && list.some((f) => f.id === prev.id)) return prev
@@ -223,14 +230,41 @@ function ForecastPageContent() {
           <div className="mx-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{fieldsError}</div>
         ) : fields.length === 0 ? (
           <div className="mx-4 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            <p className="mb-2">В журнале пока нет точек с координатами.</p>
-            <p>
-              Добавьте осмотры в приложении или откройте{" "}
-              <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
-                полевой журнал
-              </Link>
-              .
-            </p>
+            {journalStats.total === 0 ? (
+              <>
+                <p className="mb-2">Записей в журнале не найдено (или нет доступа).</p>
+                <p>
+                  Добавьте осмотры в мобильном приложении или проверьте вход.{" "}
+                  <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
+                    Полевой журнал
+                  </Link>
+                </p>
+              </>
+            ) : journalStats.withCoords === 0 ? (
+              <>
+                <p className="mb-2">
+                  Загружено записей: {journalStats.total}, но у всех нет GPS в Firebase.
+                </p>
+                <p>
+                  При осмотре в приложении включите геолокацию — прогнозу нужны latitude/longitude (или
+                  поле location).
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="mb-2">
+                  Записей с координатами: {journalStats.withCoords} из {journalStats.total}, но они не
+                  попали в список полей.
+                </p>
+                <p>
+                  Откройте{" "}
+                  <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
+                    журнал
+                  </Link>{" "}
+                  и проверьте колонки широты/долготы.
+                </p>
+              </>
+            )}
           </div>
         ) : null}
 
