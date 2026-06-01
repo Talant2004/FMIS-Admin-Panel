@@ -1,10 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { AlertBanner } from "@/components/forecast/AlertBanner"
 import { ActionList } from "@/components/forecast/ActionList"
 import { FieldSelector } from "@/components/forecast/FieldSelector"
+import { JournalHistoryCalendar } from "@/components/forecast/JournalHistoryCalendar"
 import { PestRiskCard } from "@/components/forecast/PestRiskCard"
 import { WeatherStrip } from "@/components/forecast/WeatherStrip"
 import {
@@ -20,16 +22,8 @@ import {
 } from "@/lib/forecast/fetchSamples"
 import { fetchWeather } from "@/lib/forecast/fetchWeather"
 import type { Field, PestRisk, WeatherDay } from "@/lib/forecast/types"
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLng = ((lng2 - lng1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
+import type { JournalSample } from "@/lib/journal/samples"
+import { haversineKm } from "@/lib/journal/samples"
 
 function nearestField(fields: Field[], lat: number, lng: number): Field {
   let best = fields[0]
@@ -47,28 +41,39 @@ function nearestField(fields: Field[], lat: number, lng: number): Field {
 export default function ForecastPage() {
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
-  const [fieldsSource, setFieldsSource] = useState<"journal" | "enterprise" | "demo">("journal")
+  const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
+  const [fieldsLoading, setFieldsLoading] = useState(true)
+  const [fieldsError, setFieldsError] = useState<string | null>(null)
   const [weather, setWeather] = useState<WeatherDay[]>([])
   const [risks, setRisks] = useState<PestRisk[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [forecastLoading, setForecastLoading] = useState(false)
+  const [forecastError, setForecastError] = useState<string | null>(null)
   const actionsRef = useRef<HTMLElement>(null)
   const geoApplied = useRef(false)
 
   useEffect(() => {
     let cancelled = false
     clearJournalSamplesCache()
+    setFieldsLoading(true)
+    setFieldsError(null)
     ;(async () => {
-      await loadJournalSamplesCache()
-      const list = await fetchForecastFields()
-      if (cancelled) return
-      setFields(list)
-      const source = list[0]?.source ?? "demo"
-      setFieldsSource(source === "journal" ? "journal" : source === "enterprise" ? "enterprise" : "demo")
-      setSelectedField((prev) => {
-        if (prev && list.some((f) => f.id === prev.id)) return prev
-        return list[0] ?? null
-      })
+      try {
+        await loadJournalSamplesCache()
+        const list = await fetchForecastFields()
+        if (cancelled) return
+        setFields(list)
+        setSelectedField((prev) => {
+          if (prev && list.some((f) => f.id === prev.id)) return prev
+          return list[0] ?? null
+        })
+      } catch {
+        if (!cancelled) {
+          setFieldsError("Не удалось загрузить точки из полевого журнала.")
+          setFields([])
+        }
+      } finally {
+        if (!cancelled) setFieldsLoading(false)
+      }
     })()
     return () => {
       cancelled = true
@@ -92,9 +97,24 @@ export default function ForecastPage() {
     )
   }, [fields])
 
+  useEffect(() => {
+    if (!selectedField) {
+      setFieldSamples([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      const samples = await fetchSamplesForField(selectedField)
+      if (!cancelled) setFieldSamples(samples)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedField])
+
   const loadForecast = useCallback(async (field: Field) => {
-    setLoading(true)
-    setError(null)
+    setForecastLoading(true)
+    setForecastError(null)
     try {
       const rawDays = await fetchWeather(field.lat, field.lng)
       const days = enrichDaysWithRisk(rawDays, field.crop)
@@ -108,11 +128,11 @@ export default function ForecastPage() {
       setWeather(days)
       setRisks(computed)
     } catch {
-      setError("Не удалось загрузить погоду. Проверь интернет.")
+      setForecastError("Не удалось загрузить погоду. Проверь интернет.")
       setWeather([])
       setRisks([])
     } finally {
-      setLoading(false)
+      setForecastLoading(false)
     }
   }, [])
 
@@ -121,14 +141,12 @@ export default function ForecastPage() {
     loadForecast(selectedField)
   }, [selectedField, loadForecast])
 
-  const overallLevel =
-    risks.length === 0
-      ? "safe"
-      : risks[0].riskLevel === 2
-        ? "danger"
-        : risks[0].riskLevel === 1
-          ? "warning"
-          : "safe"
+  const overallLevel = useMemo(() => {
+    if (risks.length === 0) return "safe" as const
+    if (risks[0].riskLevel === 2) return "danger" as const
+    if (risks[0].riskLevel === 1) return "warning" as const
+    return "safe" as const
+  }, [risks])
 
   const alertText = {
     safe: {
@@ -149,6 +167,8 @@ export default function ForecastPage() {
     actionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
+  const showForecast = Boolean(selectedField) && !fieldsLoading && fields.length > 0
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -157,11 +177,8 @@ export default function ForecastPage() {
         <div className="px-4 pt-4 pb-2">
           <h1 className="mb-3 text-lg font-semibold">Прогноз для поля</h1>
           <p className="mb-3 text-xs text-muted-foreground">
-            {fieldsSource === "journal"
-              ? `Точки из полевого журнала (${fields.length})`
-              : fieldsSource === "enterprise"
-                ? "Поля предприятий (журнал пуст)"
-                : "Демо-поля (нет данных журнала)"}
+            Только точки из полевого журнала
+            {!fieldsLoading && fields.length > 0 ? ` · ${fields.length}` : ""}
           </p>
           <FieldSelector
             fields={fields}
@@ -170,29 +187,55 @@ export default function ForecastPage() {
           />
         </div>
 
-        <div className="px-4">
-          {loading ? (
-            <div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Загрузка прогноза" />
-          ) : error ? (
-            <div className="rounded-xl bg-red-50 p-6 text-base text-red-800">{error}</div>
-          ) : (
-            <AlertBanner
-              level={overallLevel}
-              title={alertText.title}
-              subtitle={alertText.subtitle}
-              onActionClick={overallLevel === "danger" ? scrollToActions : undefined}
-            />
-          )}
-        </div>
+        {fieldsLoading ? (
+          <div className="mx-4 h-24 animate-pulse rounded-xl bg-muted" aria-label="Загрузка точек" />
+        ) : fieldsError ? (
+          <div className="mx-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{fieldsError}</div>
+        ) : fields.length === 0 ? (
+          <div className="mx-4 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            <p className="mb-2">В журнале пока нет точек с координатами.</p>
+            <p>
+              Добавьте осмотры в приложении или откройте{" "}
+              <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
+                полевой журнал
+              </Link>
+              .
+            </p>
+          </div>
+        ) : null}
 
-        {!loading && !error && weather.length > 0 && (
+        {showForecast && selectedField && (
+          <section className="px-4 py-3">
+            <p className="mb-2 text-sm font-medium text-muted-foreground">История по календарю</p>
+            <JournalHistoryCalendar samples={fieldSamples} />
+          </section>
+        )}
+
+        {showForecast && (
+          <div className="px-4">
+            {forecastLoading ? (
+              <div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Загрузка прогноза" />
+            ) : forecastError ? (
+              <div className="rounded-xl bg-red-50 p-6 text-base text-red-800">{forecastError}</div>
+            ) : (
+              <AlertBanner
+                level={overallLevel}
+                title={alertText.title}
+                subtitle={alertText.subtitle}
+                onActionClick={overallLevel === "danger" ? scrollToActions : undefined}
+              />
+            )}
+          </div>
+        )}
+
+        {showForecast && !forecastLoading && !forecastError && weather.length > 0 && (
           <section className="px-4 py-4">
             <p className="mb-3 text-sm font-medium text-muted-foreground">Прогноз на 7 дней</p>
             <WeatherStrip days={weather} />
           </section>
         )}
 
-        {!loading && !error && risks.length > 0 && (
+        {showForecast && !forecastLoading && !forecastError && risks.length > 0 && (
           <section className="px-4 py-2">
             <p className="mb-3 text-sm font-medium text-muted-foreground">Фитосанитарные риски</p>
             <div className="flex flex-col gap-3">
@@ -203,10 +246,12 @@ export default function ForecastPage() {
           </section>
         )}
 
-        <section ref={actionsRef} className="px-4 py-4">
-          <p className="mb-3 text-sm font-medium text-muted-foreground">Что делать</p>
-          <ActionList risks={risks} fieldId={selectedField?.id ?? "default"} />
-        </section>
+        {showForecast && (
+          <section ref={actionsRef} className="px-4 py-4">
+            <p className="mb-3 text-sm font-medium text-muted-foreground">Что делать</p>
+            <ActionList risks={risks} fieldId={selectedField?.id ?? "default"} />
+          </section>
+        )}
       </div>
     </div>
   )

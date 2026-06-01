@@ -7,7 +7,7 @@ export interface Field {
   lng: number
   enterpriseId?: string
   /** Точка из полевого журнала (samples) */
-  source?: "journal" | "enterprise"
+  source?: "journal"
   sampleIds?: string[]
   samplesCount?: number
   lastPest?: string
@@ -56,9 +56,3 @@ export interface FieldSample {
   photo?: string
   notes?: string
 }
-
-export const DEMO_FIELDS: Field[] = [
-  { id: "1", name: "Поле №1", crop: "пшеница", area: 45, lat: 51.18, lng: 71.45 },
-  { id: "2", name: "Поле №2", crop: "картофель", area: 12, lat: 51.2, lng: 71.48 },
-  { id: "3", name: "Поле №3", crop: "подсолнечник", area: 30, lat: 51.15, lng: 71.5 },
-]
