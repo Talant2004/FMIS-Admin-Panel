@@ -61,6 +61,19 @@ function severityFromPercentage(value?: number): number {
   return 0
 }
 
+/** P/R по полю: при низкой распространённости (P < 15%) развитие на отдельных растениях не даёт «высокий». */
+function severityFromPrevalenceAndDevelopment(prevalence?: number, development?: number): number {
+  const p = prevalence ?? 0
+  const d = development ?? 0
+  if (p === 0 && d === 0) return 0
+  if (p < 15) {
+    if (p === 0) return d > 0 ? 1 : 0
+    if (p < 5) return 1
+    return 2
+  }
+  return Math.max(severityFromPercentage(prevalence), severityFromPercentage(development))
+}
+
 function severityFromThreshold(value?: number, threshold?: number, exceeded?: boolean): number {
   if (exceeded) return 5
   if (value === undefined || threshold === undefined || threshold <= 0) return 0
@@ -213,10 +226,7 @@ export function parseProbeDetections(data: Record<string, FirestoreValue>): Prob
       const development = readNumber(data[`diseaseDevelopment${i}`])
       const prevalenceValues = readNumberArray(data[`prevalenceSampleValues${i}`])
       const developmentValues = readNumberArray(data[`developmentSampleValues${i}`])
-      const severityScore = Math.max(
-        severityFromPercentage(prevalence),
-        severityFromPercentage(development)
-      )
+      const severityScore = severityFromPrevalenceAndDevelopment(prevalence, development)
 
       return [
         finalizeDetection({
@@ -241,10 +251,7 @@ export function parseProbeDetections(data: Record<string, FirestoreValue>): Prob
       const prevalence = readNumber(data[`weedPrevalence${i}`])
       const development = readNumber(data[`weedInfection${i}`])
       const values = readNumberArray(data[`weed${i}SampleValues`])
-      const severityScore = Math.max(
-        severityFromPercentage(prevalence),
-        severityFromPercentage(development)
-      )
+      const severityScore = severityFromPrevalenceAndDevelopment(prevalence, development)
 
       return [
         finalizeDetection({

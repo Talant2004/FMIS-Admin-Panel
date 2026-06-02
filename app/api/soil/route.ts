@@ -13,8 +13,8 @@ export async function GET(request: Request) {
   const upstream = new URL("https://rest.isric.org/soilgrids/v2.0/properties/query")
   upstream.searchParams.set("lat", lat.toString())
   upstream.searchParams.set("lon", lng.toString())
-  upstream.searchParams.set("property", "phh2o")
-  upstream.searchParams.set("property", "soc")
+  upstream.searchParams.append("property", "phh2o")
+  upstream.searchParams.append("property", "soc")
   upstream.searchParams.set("depth", "0-5cm")
   upstream.searchParams.set("value", "mean")
 

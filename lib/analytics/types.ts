@@ -27,6 +27,22 @@ export interface TimelinePoint {
   avgDamage: number
 }
 
+export interface SampleWeatherPoint {
+  date: string
+  count: number
+  avgTemp?: number
+  avgHumidity?: number
+}
+
+export interface ArchiveWeatherPoint {
+  date: string
+  tempMean?: number
+  tempMax?: number
+  tempMin?: number
+  precipitation: number
+  humidityMean?: number
+}
+
 export interface CropShare {
   crop: string
   count: number

@@ -11,16 +11,25 @@ import { ExportButton } from "@/components/analytics/ExportButton"
 import { InspectorStatsTable } from "@/components/analytics/InspectorStatsTable"
 import { PestBarChart } from "@/components/analytics/PestBarChart"
 import { RegionHeatTable } from "@/components/analytics/RegionHeatTable"
+import { SoilSummaryCard } from "@/components/analytics/SoilSummaryCard"
 import { StatsRow } from "@/components/analytics/StatsRow"
+import { WeatherTimelineChart } from "@/components/analytics/WeatherTimelineChart"
+import { fetchArchiveWeather } from "@/lib/analytics/fetchHistoricalWeather"
 import {
   calcCropShare,
   calcInspectorStats,
+  calcSampleWeatherTimeline,
   calcSummary,
   calcTimeline,
   calcTopPests,
+  dateRangeIso,
   fetchAllSamples,
+  groupArchiveWeather,
+  samplesCentroid,
 } from "@/lib/analytics/fetchAnalytics"
-import type { RawSample } from "@/lib/analytics/types"
+import type { ArchiveWeatherPoint, RawSample } from "@/lib/analytics/types"
+import { fetchSoilIndicators } from "@/lib/soil/fetchSoil"
+import type { SoilIndicators } from "@/lib/soil/soilgrids"
 import { cn } from "@/lib/utils"
 
 function AnalyticsPageContent() {
@@ -31,6 +40,10 @@ function AnalyticsPageContent() {
   const [samples, setSamples] = useState<RawSample[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [archiveWeather, setArchiveWeather] = useState<ArchiveWeatherPoint[]>([])
+  const [weatherLoading, setWeatherLoading] = useState(false)
+  const [soil, setSoil] = useState<SoilIndicators | null>(null)
+  const [soilLoading, setSoilLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -63,8 +76,53 @@ function AnalyticsPageContent() {
   const summary = useMemo(() => calcSummary(samples), [samples])
   const topPests = useMemo(() => calcTopPests(samples), [samples])
   const timeline = useMemo(() => calcTimeline(samples, groupBy), [samples, groupBy])
+  const sampleWeather = useMemo(() => calcSampleWeatherTimeline(samples, groupBy), [samples, groupBy])
   const cropShare = useMemo(() => calcCropShare(samples), [samples])
   const inspectorStats = useMemo(() => calcInspectorStats(samples), [samples])
+  const centroid = useMemo(() => samplesCentroid(samples), [samples])
+  const archiveForChart = useMemo(
+    () => groupArchiveWeather(archiveWeather, groupBy),
+    [archiveWeather, groupBy]
+  )
+
+  useEffect(() => {
+    if (!centroid) {
+      setArchiveWeather([])
+      setSoil(null)
+      return
+    }
+
+    let cancelled = false
+    const { start, end } = dateRangeIso(dateRange)
+
+    setWeatherLoading(true)
+    fetchArchiveWeather(centroid.lat, centroid.lng, start, end)
+      .then((points) => {
+        if (!cancelled) setArchiveWeather(points)
+      })
+      .catch(() => {
+        if (!cancelled) setArchiveWeather([])
+      })
+      .finally(() => {
+        if (!cancelled) setWeatherLoading(false)
+      })
+
+    setSoilLoading(true)
+    fetchSoilIndicators(centroid.lat, centroid.lng)
+      .then((data) => {
+        if (!cancelled) setSoil(data)
+      })
+      .catch(() => {
+        if (!cancelled) setSoil(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSoilLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [centroid, dateRange])
 
   return (
       <div className="mx-auto max-w-7xl p-4 md:p-6">
@@ -129,15 +187,34 @@ function AnalyticsPageContent() {
         <StatsRow summary={summary} loading={loading} />
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <DamageTimelineChart
               data={timeline}
               groupBy={groupBy}
               onGroupByChange={setGroupBy}
               loading={loading}
             />
+            <WeatherTimelineChart
+              archive={archiveForChart}
+              fromSamples={sampleWeather}
+              groupBy={groupBy}
+              onGroupByChange={setGroupBy}
+              loading={loading}
+              archiveLoading={weatherLoading}
+              centroidLabel={
+                centroid
+                  ? `${centroid.lat.toFixed(3)}, ${centroid.lng.toFixed(3)}`
+                  : undefined
+              }
+            />
           </div>
-          <div>
+          <div className="space-y-6">
+            <SoilSummaryCard
+              soil={soil}
+              loading={soilLoading || loading}
+              lat={centroid?.lat}
+              lng={centroid?.lng}
+            />
             <CropPieChart data={cropShare} loading={loading} />
           </div>
         </div>

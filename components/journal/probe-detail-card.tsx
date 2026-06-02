@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import type { FieldSample } from "@/lib/journal-types"
+import { fetchSoilIndicators } from "@/lib/soil/fetchSoil"
 import type { SoilIndicators } from "@/lib/soil/soilgrids"
 
 function detectionKindLabel(kind: string): string {
@@ -41,11 +42,7 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
     let cancelled = false
     setSoilLoading(true)
 
-    fetch(`/api/soil?lat=${sample.latitude}&lng=${sample.longitude}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error("soil unavailable")
-        return (await res.json()) as SoilIndicators
-      })
+    fetchSoilIndicators(sample.latitude, sample.longitude)
       .then((data) => {
         if (!cancelled) setSoil(data)
       })
