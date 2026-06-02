@@ -182,7 +182,9 @@ export function parseProbeDetections(data: Record<string, FirestoreValue>): Prob
     const sampleValues = readNumberArray(data.sampleValues)
     const average = readNumber(data.pestAverage)
     const threshold = readNumber(data.threshold)
-    const thresholdExceeded = data.thresholdExceeded === true
+    const rawThresholdExceeded = data.thresholdExceeded === true
+    // При нулевом/пустом пороге метка "превышен порог" невалидна.
+    const thresholdExceeded = threshold !== undefined && threshold > 0 ? rawThresholdExceeded : false
     const severityScore = Math.max(
       severityFromThreshold(average, threshold, thresholdExceeded),
       average !== undefined ? Math.min(5, Math.ceil(average / 10)) : 0
