@@ -146,6 +146,7 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
     damageLevel: String(severity),
     notes: meta.comment ?? pickFirstString(data, ["notes", "comment", "description", "note", "remarks"]),
     photoUrl: photos[0],
+    photoUrls: photos,
     createdAt: readTimestamp(
       data.createdAt ?? data.timestamp ?? data.date ?? data.sampleDate ?? data.recordedAt
     ),
@@ -161,8 +162,12 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
     weatherHumidity: meta.weather?.humidity,
     weatherWindSpeed: meta.weather?.windSpeed,
     thresholdExceeded: meta.thresholdExceeded,
+    threshold: meta.threshold,
     pestAverage: meta.pestAverage,
     sampleValuesLength: meta.sampleValuesLength,
+    detections: meta.detections,
+    maxRiskLevel: meta.maxRiskLevel,
+    maxRiskReason: meta.maxRiskReason,
   }
 }
 

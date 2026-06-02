@@ -11,6 +11,23 @@ import type {
   TimelinePoint,
 } from "./types"
 
+function detectionNames(sample: RawSample): string[] {
+  if (sample.detections?.length) {
+    return sample.detections.map((d) => d.name).filter(Boolean)
+  }
+  return sample.pest && sample.pest !== "—" ? [sample.pest] : []
+}
+
+function detectionRows(sample: RawSample): { name: string; damageLevel: number }[] {
+  if (sample.detections?.length) {
+    return sample.detections.map((d) => ({
+      name: d.name,
+      damageLevel: d.severityScore,
+    }))
+  }
+  return [{ name: sample.pest || "Не указан", damageLevel: sample.damageLevel }]
+}
+
 /** Все точки полевого журнала за период (с email инспектора из users). */
 export async function fetchAllSamples(days = 90): Promise<RawSample[]> {
   const [samples, users] = await Promise.all([
@@ -36,6 +53,7 @@ export function calcSummary(samples: RawSample[]): AnalyticsSummary {
   const lastWeekStart = now - 2 * weekMs
 
   const pests = new Set(samples.map((s) => s.pest).filter(Boolean))
+  const targets = new Set(samples.flatMap(detectionNames))
   const inspectors = new Set(samples.map((s) => s.inspector).filter(Boolean))
 
   const samplesThisWeek = samples.filter((s) => s.date.getTime() >= thisWeekStart).length
@@ -51,10 +69,13 @@ export function calcSummary(samples: RawSample[]): AnalyticsSummary {
   return {
     totalSamples: samples.length,
     uniquePests: pests.size,
+    uniqueTargets: targets.size,
     uniqueInspectors: inspectors.size,
     avgDamageLevel,
     samplesThisWeek,
     samplesLastWeek,
+    highRiskSamples: samples.filter((s) => s.maxRiskLevel === "high" || s.damageLevel >= 4).length,
+    thresholdExceeded: samples.filter((s) => s.thresholdExceeded).length,
   }
 }
 
@@ -62,9 +83,11 @@ export function calcTopPests(samples: RawSample[], topN = 10): PestCount[] {
   const map = new Map<string, { count: number; damageSum: number }>()
 
   for (const s of samples) {
-    const key = s.pest || "Не указан"
-    const prev = map.get(key) ?? { count: 0, damageSum: 0 }
-    map.set(key, { count: prev.count + 1, damageSum: prev.damageSum + s.damageLevel })
+    for (const row of detectionRows(s)) {
+      const key = row.name || "Не указан"
+      const prev = map.get(key) ?? { count: 0, damageSum: 0 }
+      map.set(key, { count: prev.count + 1, damageSum: prev.damageSum + row.damageLevel })
+    }
   }
 
   return Array.from(map.entries())
@@ -131,7 +154,7 @@ export function calcInspectorStats(samples: RawSample[]): InspectorStat[] {
       last: new Date(0),
       pests: new Set<string>(),
     }
-    if (s.pest) prev.pests.add(s.pest)
+    for (const target of detectionNames(s)) prev.pests.add(target)
     if (s.date > prev.last) prev.last = s.date
     map.set(key, {
       total: prev.total + 1,
@@ -164,7 +187,7 @@ export function calcPestWeekMatrix(samples: RawSample[]): PestWeekRow[] {
     weeks.push({ start, label })
   }
 
-  const pestSet = new Set(samples.map((s) => s.pest || "Не указан"))
+  const pestSet = new Set(samples.flatMap(detectionNames).map((name) => name || "Не указан"))
   const topPests = calcTopPests(samples, 8).map((p) => p.pest)
 
   const pests = topPests.length > 0 ? topPests : Array.from(pestSet).slice(0, 8)
@@ -173,12 +196,10 @@ export function calcPestWeekMatrix(samples: RawSample[]): PestWeekRow[] {
     pest,
     weeks: weeks.map((w, idx) => {
       const weekEnd = idx < weeks.length - 1 ? weeks[idx + 1].start : new Date(now.getTime() + 1)
-      const count = samples.filter(
-        (s) =>
-          (s.pest || "Не указан") === pest &&
-          s.date >= w.start &&
-          s.date < weekEnd
-      ).length
+      const count = samples.filter((s) => {
+        const names = detectionNames(s)
+        return names.includes(pest) && s.date >= w.start && s.date < weekEnd
+      }).length
       return { label: w.label, count }
     }),
   }))

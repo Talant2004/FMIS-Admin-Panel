@@ -6,6 +6,27 @@ import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import type { FieldSample } from "@/lib/journal-types"
 import type { SoilIndicators } from "@/lib/soil/soilgrids"
 
+function detectionKindLabel(kind: string): string {
+  if (kind === "pest") return "Вредитель"
+  if (kind === "disease") return "Болезнь"
+  if (kind === "weed") return "Сорняк"
+  return "Объект"
+}
+
+function riskBadgeVariant(level?: string): "default" | "secondary" | "destructive" | "outline" {
+  if (level === "high") return "destructive"
+  if (level === "medium") return "default"
+  if (level === "low") return "secondary"
+  return "outline"
+}
+
+function riskLabel(level?: string): string {
+  if (level === "high") return "Высокий риск"
+  if (level === "medium") return "Наблюдать"
+  if (level === "low") return "Низкий риск"
+  return "Нет оценки"
+}
+
 export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
   const typeLabel = monitoringTypeLabel(sample.monitoringType)
   const [soil, setSoil] = useState<SoilIndicators | null>(null)
@@ -48,6 +69,9 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
           <span className="text-xs text-muted-foreground">{sample.researchDiscipline}</span>
         ) : null}
         {sample.thresholdExceeded ? <Badge variant="destructive">Порог превышен</Badge> : null}
+        {sample.maxRiskLevel && sample.maxRiskLevel !== "none" ? (
+          <Badge variant={riskBadgeVariant(sample.maxRiskLevel)}>{riskLabel(sample.maxRiskLevel)}</Badge>
+        ) : null}
       </div>
 
       <dl className="grid gap-2 text-xs">
@@ -78,7 +102,35 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
             </dd>
           </div>
         )}
-        {sample.pest && (
+        {sample.detections.length > 0 ? (
+          <div>
+            <dt className="text-muted-foreground">Объекты и оценка риска</dt>
+            <dd className="mt-1 space-y-2">
+              {sample.detections.map((detection) => (
+                <div key={`${detection.kind}-${detection.name}`} className="rounded-md border bg-background p-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{detection.name}</span>
+                    <Badge variant="outline">{detectionKindLabel(detection.kind)}</Badge>
+                    <Badge variant={riskBadgeVariant(detection.riskLevel)}>
+                      {riskLabel(detection.riskLevel)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-muted-foreground">{detection.riskReason}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                    {detection.category ? <span>Категория: {detection.category}</span> : null}
+                    {detection.stage ? <span>Фаза: {detection.stage}</span> : null}
+                    {detection.inputType ? <span>Тип ввода: {detection.inputType}</span> : null}
+                    {detection.prevalence !== undefined ? <span>P: {detection.prevalence}%</span> : null}
+                    {detection.development !== undefined ? <span>R: {detection.development}%</span> : null}
+                    {detection.average !== undefined ? <span>Среднее: {detection.average}</span> : null}
+                    {detection.threshold !== undefined ? <span>Порог: {detection.threshold}</span> : null}
+                    {detection.sampleCount !== undefined ? <span>Проб: {detection.sampleCount}</span> : null}
+                  </div>
+                </div>
+              ))}
+            </dd>
+          </div>
+        ) : sample.pest ? (
           <div>
             <dt className="text-muted-foreground">
               {sample.monitoringType === "phytopathology"
@@ -89,7 +141,7 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
             </dt>
             <dd>{sample.pest}</dd>
           </div>
-        )}
+        ) : null}
         {sample.pestAverage !== undefined && (
           <div>
             <dt className="text-muted-foreground">Среднее на пробу</dt>
@@ -102,6 +154,12 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
             <dd>{sample.sampleValuesLength}</dd>
           </div>
         )}
+        {sample.photoUrls && sample.photoUrls.length > 1 ? (
+          <div>
+            <dt className="text-muted-foreground">Фото</dt>
+            <dd>{sample.photoUrls.length} файлов</dd>
+          </div>
+        ) : null}
         {(sample.weatherTemperature !== undefined || sample.weatherHumidity !== undefined) && (
           <div>
             <dt className="text-muted-foreground">Погода на точке (командировка)</dt>

@@ -1,6 +1,7 @@
 import { readCoordinates } from "@/lib/journal-format"
 
 export type MonitoringType = "entomology" | "phytopathology" | "herbology" | (string & {})
+export type ProbeDetectionKind = "pest" | "disease" | "weed" | "unknown"
 
 export interface ProbeWeather {
   temperature?: number
@@ -10,17 +11,88 @@ export interface ProbeWeather {
 
 type FirestoreValue = unknown
 
+export interface ProbeDetection {
+  kind: ProbeDetectionKind
+  name: string
+  category?: string
+  stage?: string
+  inputType?: string
+  prevalence?: number
+  development?: number
+  average?: number
+  threshold?: number
+  thresholdExceeded?: boolean
+  sampleCount?: number
+  severityScore: number
+  riskLevel: "low" | "medium" | "high"
+  riskReason: string
+}
+
 function isRecord(value: FirestoreValue): value is Record<string, FirestoreValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function readNumber(value: FirestoreValue): number | undefined {
+export function readNumber(value: FirestoreValue): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value
   if (typeof value === "string" && value.trim()) {
     const n = Number(value)
     if (Number.isFinite(n)) return n
   }
   return undefined
+}
+
+function readNumberArray(value: FirestoreValue): number[] {
+  if (!Array.isArray(value)) return []
+  return value.map(readNumber).filter((item): item is number => item !== undefined)
+}
+
+function riskLevelFromScore(score: number): ProbeDetection["riskLevel"] {
+  if (score >= 4) return "high"
+  if (score >= 2) return "medium"
+  return "low"
+}
+
+function severityFromPercentage(value?: number): number {
+  if (value === undefined) return 0
+  if (value >= 60) return 5
+  if (value >= 35) return 4
+  if (value >= 15) return 3
+  if (value > 0) return 2
+  return 0
+}
+
+function severityFromThreshold(value?: number, threshold?: number, exceeded?: boolean): number {
+  if (exceeded) return 5
+  if (value === undefined || threshold === undefined || threshold <= 0) return 0
+  const ratio = value / threshold
+  if (ratio >= 1) return 5
+  if (ratio >= 0.75) return 4
+  if (ratio >= 0.5) return 3
+  if (ratio > 0) return 2
+  return 0
+}
+
+function detectionReason(detection: Omit<ProbeDetection, "riskLevel" | "riskReason">): string {
+  if (detection.thresholdExceeded) return "превышен экономический порог вредоносности"
+  if (detection.threshold !== undefined && detection.average !== undefined) {
+    return `среднее ${detection.average} при пороге ${detection.threshold}`
+  }
+  if (detection.development !== undefined && detection.prevalence !== undefined) {
+    return `распространенность ${detection.prevalence}%, развитие ${detection.development}%`
+  }
+  if (detection.prevalence !== undefined) return `распространенность ${detection.prevalence}%`
+  if (detection.sampleCount !== undefined) return `проб в серии: ${detection.sampleCount}`
+  return "данные пробы сохранены"
+}
+
+function finalizeDetection(
+  detection: Omit<ProbeDetection, "riskLevel" | "riskReason">
+): ProbeDetection {
+  return {
+    ...detection,
+    riskLevel: riskLevelFromScore(detection.severityScore),
+    riskReason: detectionReason(detection),
+  }
 }
 
 function pickString(...values: FirestoreValue[]): string {
@@ -94,6 +166,111 @@ export function readPhotoUrls(data: Record<string, FirestoreValue>): string[] {
   return single ? [single] : []
 }
 
+function hasUsefulName(name: string): boolean {
+  const normalized = name.trim().toLowerCase()
+  if (!normalized) return false
+  return !/(не обнаруж|нет|не выяв|absent|none|no pests)/i.test(normalized)
+}
+
+export function parseProbeDetections(data: Record<string, FirestoreValue>): ProbeDetection[] {
+  const type = pickString(data.monitoringType)
+
+  if (type === "entomology") {
+    const name = pickString(data.pest, data.pestName, data.insect)
+    if (!hasUsefulName(name)) return []
+
+    const sampleValues = readNumberArray(data.sampleValues)
+    const average = readNumber(data.pestAverage)
+    const threshold = readNumber(data.threshold)
+    const thresholdExceeded = data.thresholdExceeded === true
+    const severityScore = Math.max(
+      severityFromThreshold(average, threshold, thresholdExceeded),
+      average !== undefined ? Math.min(5, Math.ceil(average / 10)) : 0
+    )
+
+    return [
+      finalizeDetection({
+        kind: "pest",
+        name,
+        stage: pickString(data.pestStage) || undefined,
+        average,
+        threshold,
+        thresholdExceeded,
+        sampleCount: sampleValues.length || undefined,
+        severityScore,
+      }),
+    ]
+  }
+
+  if (type === "phytopathology") {
+    return [1, 2, 3].flatMap((i) => {
+      const name = pickString(data[`disease${i}`])
+      if (!hasUsefulName(name)) return []
+
+      const prevalence = readNumber(data[`prevalencePercentage${i}`])
+      const development = readNumber(data[`diseaseDevelopment${i}`])
+      const prevalenceValues = readNumberArray(data[`prevalenceSampleValues${i}`])
+      const developmentValues = readNumberArray(data[`developmentSampleValues${i}`])
+      const severityScore = Math.max(
+        severityFromPercentage(prevalence),
+        severityFromPercentage(development)
+      )
+
+      return [
+        finalizeDetection({
+          kind: "disease",
+          name,
+          category: pickString(data[`diseaseCategory${i}`]) || undefined,
+          inputType: pickString(data[`inputType${i}`]) || undefined,
+          prevalence,
+          development,
+          sampleCount: Math.max(prevalenceValues.length, developmentValues.length) || undefined,
+          severityScore,
+        }),
+      ]
+    })
+  }
+
+  if (type === "herbology") {
+    return [1, 2, 3].flatMap((i) => {
+      const name = pickString(data[`weed${i}`])
+      if (!hasUsefulName(name)) return []
+
+      const prevalence = readNumber(data[`weedPrevalence${i}`])
+      const development = readNumber(data[`weedInfection${i}`])
+      const values = readNumberArray(data[`weed${i}SampleValues`])
+      const severityScore = Math.max(
+        severityFromPercentage(prevalence),
+        severityFromPercentage(development)
+      )
+
+      return [
+        finalizeDetection({
+          kind: "weed",
+          name,
+          category: pickString(data[`weedCategory${i}`]) || undefined,
+          stage: pickString(data[`weedStage${i}`]) || undefined,
+          prevalence,
+          development,
+          sampleCount: values.length || undefined,
+          severityScore,
+        }),
+      ]
+    })
+  }
+
+  const target = probePrimaryTarget(data)
+  if (!hasUsefulName(target)) return []
+
+  return [
+    finalizeDetection({
+      kind: "unknown",
+      name: target,
+      severityScore: readNumber(data.damageLevel ?? data.damage) ?? 0,
+    }),
+  ]
+}
+
 /** Главный объект учёта по типу пробы. */
 export function probePrimaryTarget(data: Record<string, FirestoreValue>): string {
   const type = pickString(data.monitoringType)
@@ -119,6 +296,11 @@ export function probePrimaryTarget(data: Record<string, FirestoreValue>): string
 
 /** Числовая «серьёзность» 0–5 для графиков (упрощённо). */
 export function probeSeverityScore(data: Record<string, FirestoreValue>): number {
+  const detections = parseProbeDetections(data)
+  if (detections.length > 0) {
+    return Math.max(...detections.map((d) => d.severityScore))
+  }
+
   const type = pickString(data.monitoringType)
 
   if (type === "entomology") {
@@ -169,10 +351,16 @@ export interface ParsedProbeMeta {
   pestAverage?: number
   countingMethod?: string
   sampleValuesLength?: number
+  threshold?: number
+  detections: ProbeDetection[]
+  maxRiskLevel: ProbeDetection["riskLevel"] | "none"
+  maxRiskReason?: string
 }
 
 export function parseProbeMeta(id: string, data: Record<string, FirestoreValue>): ParsedProbeMeta {
   const sampleValues = data.sampleValues
+  const detections = parseProbeDetections(data)
+  const strongest = [...detections].sort((a, b) => b.severityScore - a.severityScore)[0]
   return {
     monitoringType: pickString(data.monitoringType) || undefined,
     researchDiscipline: pickString(data.researchDiscipline) || undefined,
@@ -193,6 +381,10 @@ export function parseProbeMeta(id: string, data: Record<string, FirestoreValue>)
     pestAverage: readNumber(data.pestAverage),
     countingMethod: pickString(data.countingMethod) || undefined,
     sampleValuesLength: Array.isArray(sampleValues) ? sampleValues.length : undefined,
+    threshold: readNumber(data.threshold),
+    detections,
+    maxRiskLevel: strongest?.riskLevel ?? "none",
+    maxRiskReason: strongest?.riskReason,
   }
 }
 

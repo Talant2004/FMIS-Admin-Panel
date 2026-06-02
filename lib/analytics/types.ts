@@ -6,10 +6,13 @@ export type RawSample = JournalSample
 export interface AnalyticsSummary {
   totalSamples: number
   uniquePests: number
+  uniqueTargets: number
   uniqueInspectors: number
   avgDamageLevel: number
   samplesThisWeek: number
   samplesLastWeek: number
+  highRiskSamples: number
+  thresholdExceeded: number
 }
 
 export interface PestCount {

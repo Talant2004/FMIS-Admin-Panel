@@ -80,14 +80,20 @@ export function StatsRow({ summary, loading }: StatsRowProps) {
         }
       />
       <StatCard
-        label="Видов вредителей"
-        value={String(summary.uniquePests)}
+        label="Объектов мониторинга"
+        value={String(summary.uniqueTargets || summary.uniquePests)}
+        sub={
+          summary.thresholdExceeded > 0
+            ? `Порог превышен: ${summary.thresholdExceeded}`
+            : undefined
+        }
         loading={loading}
       />
       <StatCard
-        label="Средний урон"
+        label="Средний риск"
         value={`${summary.avgDamageLevel.toFixed(1)} / 5`}
         valueClass={damageColorClass(summary.avgDamageLevel)}
+        sub={summary.highRiskSamples > 0 ? `Высокий риск: ${summary.highRiskSamples}` : undefined}
         loading={loading}
       />
       <StatCard

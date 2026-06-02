@@ -9,6 +9,7 @@ import {
   readPhotoUrls,
 } from "@/lib/journal/probe-parse"
 import type { Field } from "@/lib/forecast/types"
+import type { ProbeDetection } from "@/lib/journal/probe-parse"
 
 export interface JournalSample {
   id: string
@@ -33,6 +34,10 @@ export interface JournalSample {
   weatherHumidity?: number
   weatherWindSpeed?: number
   thresholdExceeded?: boolean
+  threshold?: number
+  detections: ProbeDetection[]
+  maxRiskLevel?: ProbeDetection["riskLevel"] | "none"
+  maxRiskReason?: string
   photoUrls?: string[]
 }
 
@@ -97,6 +102,10 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
     weatherHumidity: meta.weather?.humidity,
     weatherWindSpeed: meta.weather?.windSpeed,
     thresholdExceeded: meta.thresholdExceeded,
+    threshold: meta.threshold,
+    detections: meta.detections,
+    maxRiskLevel: meta.maxRiskLevel,
+    maxRiskReason: meta.maxRiskReason,
   }
 }
 

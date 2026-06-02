@@ -255,26 +255,55 @@ export function enrichDaysWithRisk(days: WeatherDay[], crop: string): WeatherDay
   })
 }
 
-export function applySamplesToRisks(risks: PestRisk[], samples: { pest: string; damageLevel: number; date: Date }[]): PestRisk[] {
+type RiskSample = {
+  pest: string
+  damageLevel: number
+  date: Date
+  thresholdExceeded?: boolean
+  maxRiskLevel?: string
+  maxRiskReason?: string
+  detections?: { name: string; severityScore: number; riskLevel: string; riskReason: string }[]
+}
+
+function sampleTargets(sample: RiskSample): { name: string; damageLevel: number; reason?: string }[] {
+  if (sample.detections?.length) {
+    return sample.detections.map((detection) => ({
+      name: detection.name,
+      damageLevel: detection.severityScore,
+      reason: detection.riskReason,
+    }))
+  }
+  return [{ name: sample.pest, damageLevel: sample.damageLevel, reason: sample.maxRiskReason }]
+}
+
+export function applySamplesToRisks(risks: PestRisk[], samples: RiskSample[]): PestRisk[] {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
 
   return risks.map((risk) => {
     const confirmed = samples.find((s) => {
       if (s.date.getTime() < weekAgo) return false
-      if (s.damageLevel < 3) return false
-      const pestLower = s.pest.toLowerCase()
+      if (!s.thresholdExceeded && s.maxRiskLevel !== "high" && s.damageLevel < 3) return false
       const nameLower = risk.name.toLowerCase()
-      return pestLower.includes(nameLower.slice(0, 4)) || nameLower.includes(pestLower.slice(0, 4))
+      return sampleTargets(s).some((target) => {
+        if (target.damageLevel < 3 && !s.thresholdExceeded) return false
+        const targetLower = target.name.toLowerCase()
+        return targetLower.includes(nameLower.slice(0, 4)) || nameLower.includes(targetLower.slice(0, 4))
+      })
     })
 
     if (!confirmed) return risk
+    const target = sampleTargets(confirmed).sort((a, b) => b.damageLevel - a.damageLevel)[0]
 
     return {
       ...risk,
       riskLevel: 2 as RiskLevel,
       riskLabel: "Подтверждено осмотром в поле",
-      triggerReason: `Инспектор зафиксировал ${confirmed.pest} на поле недавно`,
-      recommendation: "Обработай поле по рекомендации агронома в ближайшие 48 часов",
+      triggerReason: target?.reason
+        ? `В журнале зафиксировано: ${target.name}, ${target.reason}`
+        : `Инспектор зафиксировал ${confirmed.pest} на поле недавно`,
+      recommendation: confirmed.thresholdExceeded
+        ? "Порог вредоносности превышен: проверь рекомендацию специалиста и готовь обработку в ближайшие 24-48 часов"
+        : "Проверь рекомендацию специалиста и повтори осмотр проблемной зоны",
       daysToAction: null,
     }
   }).sort((a, b) => b.riskLevel - a.riskLevel)

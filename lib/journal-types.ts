@@ -1,3 +1,5 @@
+import type { ProbeDetection } from "@/lib/journal/probe-parse"
+
 export interface FieldSample {
   id: string
   userId?: string
@@ -8,6 +10,7 @@ export interface FieldSample {
   damageLevel?: string
   notes?: string
   photoUrl?: string
+  photoUrls?: string[]
   createdAt?: string
   fields: Record<string, string>
   /** Тип пробы: entomology | phytopathology | herbology */
@@ -22,8 +25,12 @@ export interface FieldSample {
   weatherHumidity?: number
   weatherWindSpeed?: number
   thresholdExceeded?: boolean
+  threshold?: number
   pestAverage?: number
   sampleValuesLength?: number
+  detections: ProbeDetection[]
+  maxRiskLevel?: ProbeDetection["riskLevel"] | "none"
+  maxRiskReason?: string
 }
 
 export interface JournalUser {

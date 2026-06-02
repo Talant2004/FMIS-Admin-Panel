@@ -30,6 +30,76 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   )
 }
 
+const HIDDEN_TABLE_FIELDS = new Set([
+  "comment",
+  "countingMethod",
+  "createdAt",
+  "crop",
+  "cropStage",
+  "developmentSampleValues1",
+  "developmentSampleValues2",
+  "developmentSampleValues3",
+  "disease1",
+  "disease2",
+  "disease3",
+  "diseaseCategory1",
+  "diseaseCategory2",
+  "diseaseCategory3",
+  "diseaseDevelopment1",
+  "diseaseDevelopment2",
+  "diseaseDevelopment3",
+  "experimentId",
+  "farmingName",
+  "fieldArea",
+  "fullName",
+  "id",
+  "inputType1",
+  "inputType2",
+  "inputType3",
+  "lat",
+  "lng",
+  "monitoringType",
+  "pest",
+  "pestAverage",
+  "pestStage",
+  "photoPaths",
+  "photoUrls",
+  "plantsPerSample",
+  "prevalencePercentage1",
+  "prevalencePercentage2",
+  "prevalencePercentage3",
+  "prevalenceSampleValues1",
+  "prevalenceSampleValues2",
+  "prevalenceSampleValues3",
+  "researchDiscipline",
+  "rowCoordinates",
+  "sampleValues",
+  "threshold",
+  "thresholdExceeded",
+  "userEmail",
+  "userId",
+  "variety",
+  "weatherConditions",
+  "weed1",
+  "weed2",
+  "weed3",
+  "weed1SampleValues",
+  "weed2SampleValues",
+  "weed3SampleValues",
+  "weedCategory1",
+  "weedCategory2",
+  "weedCategory3",
+  "weedInfection1",
+  "weedInfection2",
+  "weedInfection3",
+  "weedPrevalence1",
+  "weedPrevalence2",
+  "weedPrevalence3",
+  "weedStage1",
+  "weedStage2",
+  "weedStage3",
+])
+
 function JournalPageContent() {
   const { user } = useAuth()
   const [samples, setSamples] = useState<FieldSample[]>([])
@@ -106,6 +176,15 @@ function JournalPageContent() {
         inspector,
         sample.latitude?.toFixed(5),
         sample.longitude?.toFixed(5),
+        sample.maxRiskLevel,
+        sample.maxRiskReason,
+        ...sample.detections.flatMap((detection) => [
+          detection.name,
+          detection.kind,
+          detection.category,
+          detection.stage,
+          detection.riskReason,
+        ]),
         ...Object.values(sample.fields),
       ]
         .filter(Boolean)
@@ -120,13 +199,27 @@ function JournalPageContent() {
   const allFieldKeys = useMemo(() => {
     const keys = new Set<string>()
     for (const sample of filteredSamples) {
-      Object.keys(sample.fields).forEach((key) => keys.add(key))
+      Object.keys(sample.fields).forEach((key) => {
+        if (!HIDDEN_TABLE_FIELDS.has(key)) keys.add(key)
+      })
     }
     return Array.from(keys).sort((a, b) => a.localeCompare(b, "ru"))
   }, [filteredSamples])
 
   const uniquePests = useMemo(() => {
-    return new Set(samples.map((sample) => sample.pest).filter(Boolean)).size
+    return new Set(
+      samples
+        .flatMap((sample) =>
+          sample.detections.length > 0
+            ? sample.detections.map((detection) => detection.name)
+            : [sample.pest]
+        )
+        .filter(Boolean)
+    ).size
+  }, [samples])
+
+  const highRiskCount = useMemo(() => {
+    return samples.filter((sample) => sample.maxRiskLevel === "high" || Number(sample.damageLevel) >= 4).length
   }, [samples])
 
   const withPhotoCount = useMemo(() => {
@@ -171,10 +264,11 @@ function JournalPageContent() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard label="Всего записей" value={isLoading ? "…" : samples.length} />
           <StatCard label="Инспекторов" value={isLoading ? "…" : users.length} />
-          <StatCard label="Видов вредителей" value={isLoading ? "…" : uniquePests} />
+          <StatCard label="Объектов мониторинга" value={isLoading ? "…" : uniquePests} />
+          <StatCard label="Высокий риск" value={isLoading ? "…" : highRiskCount} />
           <StatCard label="С координатами" value={isLoading ? "…" : withCoordinatesCount} />
         </div>
 
@@ -237,6 +331,7 @@ function JournalPageContent() {
                     <th className="border px-2 py-1 text-left">Объект учёта</th>
                     <th className="border px-2 py-1 text-left">Культура</th>
                     <th className="border px-2 py-1 text-left">Поражение</th>
+                    <th className="border px-2 py-1 text-left">Риск</th>
                     <th className="border px-2 py-1 text-left">Координаты</th>
                     <th className="border px-2 py-1 text-left">Фото</th>
                     {allFieldKeys.map((key) => (
@@ -249,13 +344,13 @@ function JournalPageContent() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={8 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
                         Загрузка данных полевого журнала...
                       </td>
                     </tr>
                   ) : filteredSamples.length === 0 ? (
                     <tr>
-                      <td colSpan={8 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
                         Записи не найдены
                       </td>
                     </tr>
@@ -282,6 +377,17 @@ function JournalPageContent() {
                             <span className={`rounded px-1.5 py-0.5 ${damageBadgeClass(sample.damageLevel)}`}>
                               {sample.damageLevel}
                             </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="border px-2 py-1 whitespace-nowrap">
+                          {sample.maxRiskLevel === "high" ? (
+                            <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">Высокий</span>
+                          ) : sample.maxRiskLevel === "medium" ? (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">Наблюдать</span>
+                          ) : sample.maxRiskLevel === "low" ? (
+                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">Низкий</span>
                           ) : (
                             "—"
                           )}
