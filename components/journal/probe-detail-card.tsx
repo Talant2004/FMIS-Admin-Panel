@@ -1,11 +1,44 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import type { FieldSample } from "@/lib/journal-types"
+import type { SoilIndicators } from "@/lib/soil/soilgrids"
 
 export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
   const typeLabel = monitoringTypeLabel(sample.monitoringType)
+  const [soil, setSoil] = useState<SoilIndicators | null>(null)
+  const [soilLoading, setSoilLoading] = useState(false)
+
+  useEffect(() => {
+    if (sample.latitude === undefined || sample.longitude === undefined) {
+      setSoil(null)
+      return
+    }
+
+    let cancelled = false
+    setSoilLoading(true)
+
+    fetch(`/api/soil?lat=${sample.latitude}&lng=${sample.longitude}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("soil unavailable")
+        return (await res.json()) as SoilIndicators
+      })
+      .then((data) => {
+        if (!cancelled) setSoil(data)
+      })
+      .catch(() => {
+        if (!cancelled) setSoil(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSoilLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sample.latitude, sample.longitude])
 
   return (
     <div className="space-y-3 rounded-lg border bg-muted/30 p-3 text-sm">
@@ -79,6 +112,31 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
             </dd>
           </div>
         )}
+        {sample.latitude !== undefined && sample.longitude !== undefined ? (
+          <div>
+            <dt className="text-muted-foreground">Почва (верхний слой)</dt>
+            <dd>
+              {soilLoading ? (
+                "Загрузка..."
+              ) : soil ? (
+                <>
+                  pH: {soil.phH2O !== undefined ? soil.phH2O.toFixed(2) : "—"}
+                  {" · "}
+                  Органический углерод:{" "}
+                  {soil.organicCarbonGkg !== undefined
+                    ? `${soil.organicCarbonGkg.toFixed(2)} г/кг`
+                    : "—"}
+                  {soil.organicCarbonPct !== undefined ? ` (${soil.organicCarbonPct.toFixed(2)} %)` : ""}
+                  <span className="block text-[11px] text-muted-foreground">
+                    Источник: {soil.source}, слой {soil.layer}
+                  </span>
+                </>
+              ) : (
+                "Нет данных по почве для этой точки"
+              )}
+            </dd>
+          </div>
+        ) : null}
         {sample.latitude !== undefined && sample.longitude !== undefined && (
           <div>
             <dt className="text-muted-foreground">Координаты</dt>
