@@ -1,5 +1,6 @@
 import { getJournalUsers } from "@/lib/firestore-journal"
 import { enrichSamplesWithInspectors } from "@/lib/journal/inspectors"
+import { fetchDailySummaries, summariesToTimeline, type DailySummaryDoc } from "@/lib/analytics/daily-summaries"
 import { fetchJournalSamples } from "@/lib/journal/samples"
 import type {
   AnalyticsSummary,
@@ -31,13 +32,68 @@ function detectionRows(sample: RawSample): { name: string; damageLevel: number }
 }
 
 /** Все точки полевого журнала за период (с email инспектора из users). */
-export async function fetchAllSamples(days = 90): Promise<RawSample[]> {
+export async function fetchAllSamples(days = 90, maxDocs = 500): Promise<RawSample[]> {
   const [samples, users] = await Promise.all([
-    fetchJournalSamples(days, 500),
+    fetchJournalSamples(days, maxDocs),
     getJournalUsers().catch(() => []),
   ])
   return enrichSamplesWithInspectors(samples, users)
 }
+
+export interface AnalyticsBundle {
+  samples: RawSample[]
+  dailySummaries: DailySummaryDoc[]
+  timelineFromSummaries: boolean
+}
+
+/** Сводки из `daily_summaries` + ограниченная выборка `samples` для ИФН/heatmap. */
+export async function fetchAnalyticsBundle(days = 90): Promise<AnalyticsBundle> {
+  const [summaries, users] = await Promise.all([
+    fetchDailySummaries(days),
+    getJournalUsers().catch(() => []),
+  ])
+  const sampleCap = Math.min(500, Math.max(100, days))
+  const samples = enrichSamplesWithInspectors(
+    await fetchJournalSamples(days, sampleCap),
+    users
+  )
+  return {
+    samples,
+    dailySummaries: summaries,
+    timelineFromSummaries: summaries.length >= 3,
+  }
+}
+
+/** Средняя распространённость P (фитопатология) по дням/неделям. */
+export function calcPhytoPrevalenceTimeline(
+  samples: RawSample[],
+  groupBy: "day" | "week" = "day"
+): { date: string; avgPrevalenceP?: number }[] {
+  const map = new Map<string, { sum: number; n: number }>()
+
+  for (const s of samples) {
+    if (s.monitoringType && s.monitoringType !== "phytopathology") continue
+    const pValues =
+      s.detections?.map((d) => d.prevalence).filter((v): v is number => v !== undefined) ?? []
+    if (pValues.length === 0) continue
+    const avg = pValues.reduce((a, b) => a + b, 0) / pValues.length
+
+    const keyDate = groupBy === "week" ? startOfWeek(s.date) : new Date(s.date)
+    if (groupBy === "day") keyDate.setHours(0, 0, 0, 0)
+    const key = keyDate.toISOString().slice(0, 10)
+    const prev = map.get(key) ?? { sum: 0, n: 0 }
+    map.set(key, { sum: prev.sum + avg, n: prev.n + 1 })
+  }
+
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({
+      date,
+      avgPrevalenceP: v.n ? v.sum / v.n : undefined,
+    }))
+}
+
+export { summariesToTimeline }
 
 function startOfWeek(d: Date): Date {
   const copy = new Date(d)

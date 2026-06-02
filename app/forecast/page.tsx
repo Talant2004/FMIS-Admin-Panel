@@ -16,7 +16,11 @@ import {
   calcAllRisks,
   enrichDaysWithRisk,
 } from "@/lib/forecast/calcRisks"
-import { fieldsFromJournalSamples } from "@/lib/journal/samples"
+import { getEnterprises } from "@/lib/firestore-enterprises"
+import { clusterJournalSamples } from "@/lib/journal/field-clusters"
+import { calcPredictiveAlerts, type PredictiveAlert } from "@/lib/forecast/predictRules"
+import { PredictiveAlerts } from "@/components/forecast/PredictiveAlerts"
+import { SprayWindowCard } from "@/components/forecast/SprayWindowCard"
 import {
   clearJournalSamplesCache,
   fetchSamplesForField,
@@ -70,6 +74,7 @@ function ForecastPageContent() {
   const [risks, setRisks] = useState<PestRisk[]>([])
   const [forecastLoading, setForecastLoading] = useState(false)
   const [forecastError, setForecastError] = useState<string | null>(null)
+  const [predictiveAlerts, setPredictiveAlerts] = useState<PredictiveAlert[]>([])
   const actionsRef = useRef<HTMLElement>(null)
   const geoApplied = useRef(false)
 
@@ -86,7 +91,8 @@ function ForecastPageContent() {
           total: allSamples.length,
           withCoords: countSamplesWithCoordinates(allSamples),
         })
-        const list = fieldsFromJournalSamples(allSamples)
+        const enterprises = await getEnterprises().catch(() => [])
+        const list = clusterJournalSamples(allSamples, enterprises, 7.5)
         setFields(list)
         setSelectedField((prev) => {
           if (prev && list.some((f) => f.id === prev.id)) return prev
@@ -155,12 +161,16 @@ function ForecastPageContent() {
         computed = applySamplesToRisks(computed, samples)
       }
 
+      const predictive = calcPredictiveAlerts(samples, days)
+
       setWeather(days)
       setRisks(computed)
+      setPredictiveAlerts(predictive)
     } catch {
       setForecastError("Не удалось загрузить погоду. Проверь интернет.")
       setWeather([])
       setRisks([])
+      setPredictiveAlerts([])
     } finally {
       setForecastLoading(false)
     }
@@ -272,6 +282,18 @@ function ForecastPageContent() {
           <section className="px-4 py-3">
             <p className="mb-2 text-sm font-medium text-muted-foreground">История по календарю</p>
             <JournalHistoryCalendar samples={fieldSamples} />
+          </section>
+        )}
+
+        {showForecast && predictiveAlerts.length > 0 && (
+          <section className="px-4 py-2">
+            <PredictiveAlerts alerts={predictiveAlerts} />
+          </section>
+        )}
+
+        {showForecast && selectedField && (
+          <section className="px-4 py-2">
+            <SprayWindowCard lat={selectedField.lat} lng={selectedField.lng} />
           </section>
         )}
 

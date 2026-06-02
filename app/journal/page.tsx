@@ -11,7 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ProbeDetailCard } from "@/components/journal/probe-detail-card"
-import { getJournalData } from "@/lib/firestore-journal"
+import { getJournalUsers } from "@/lib/firestore-journal"
+import {
+  fetchJournalFirstPage,
+  fetchJournalPage,
+  JOURNAL_PAGE_SIZE,
+  type JournalListFilters,
+} from "@/lib/journal/paginated-samples"
+import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 import { damageBadgeClass, formatSampleDate } from "@/lib/journal-format"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
@@ -108,42 +115,73 @@ function JournalPageContent() {
   const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
+  const [monitoringFilter, setMonitoringFilter] = useState("")
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  const listFilters: JournalListFilters = useMemo(
+    () => ({
+      monitoringType: monitoringFilter || undefined,
+    }),
+    [monitoringFilter]
+  )
+
+  const loadFirstPage = async () => {
+    setIsLoading(true)
+    setLoadError(null)
+    try {
+      const [page, usersList] = await Promise.all([
+        fetchJournalFirstPage(listFilters),
+        getJournalUsers(),
+      ])
+      setSamples(page.samples)
+      setLastDoc(page.lastDoc)
+      setHasMore(page.hasMore)
+      setUsers(usersList)
+      setSelectedId(page.samples[0]?.id ?? null)
+    } catch (error) {
+      console.error("Failed to load field journal data.", error)
+      setLoadError(
+        isPermissionDenied(error)
+          ? PERMISSION_DENIED_HINT
+          : error instanceof Error
+            ? error.message
+            : "Неизвестная ошибка"
+      )
+      setSamples([])
+      setUsers([])
+      setLastDoc(null)
+      setHasMore(false)
+      setSelectedId(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadMore = async () => {
+    if (!hasMore || !lastDoc || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await fetchJournalPage({
+        cursor: lastDoc,
+        filters: listFilters,
+        pageSize: JOURNAL_PAGE_SIZE,
+      })
+      setSamples((prev) => [...prev, ...page.samples])
+      setLastDoc(page.lastDoc)
+      setHasMore(page.hasMore)
+    } catch (error) {
+      console.error("Failed to load more journal rows.", error)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   useEffect(() => {
-    let isMounted = true
-
-    const load = async () => {
-      try {
-        const data = await getJournalData()
-        if (!isMounted) return
-        setLoadError(null)
-        setSamples(data.samples)
-        setUsers(data.users)
-        setSelectedId(data.samples[0]?.id ?? null)
-      } catch (error) {
-        console.error("Failed to load field journal data.", error)
-        if (!isMounted) return
-        setLoadError(
-          isPermissionDenied(error)
-            ? PERMISSION_DENIED_HINT
-            : error instanceof Error
-              ? error.message
-              : "Неизвестная ошибка"
-        )
-        setSamples([])
-        setUsers([])
-        setSelectedId(null)
-      } finally {
-        if (isMounted) setIsLoading(false)
-      }
-    }
-
-    load()
-    return () => {
-      isMounted = false
-    }
-  }, [user?.uid])
+    void loadFirstPage()
+  }, [user?.uid, monitoringFilter])
 
   const usersById = useMemo(() => {
     const map = new Map<string, JournalUser>()
@@ -238,7 +276,7 @@ function JournalPageContent() {
           <div>
             <h1 className="text-lg font-semibold">Полевой журнал</h1>
             <p className="text-sm text-muted-foreground">
-              Пробы учёных (Firestore · samples): энтомология, фитопатология, гербология
+              Firestore · samples · по {JOURNAL_PAGE_SIZE} записей (курсорная пагинация)
             </p>
           </div>
 
@@ -265,7 +303,7 @@ function JournalPageContent() {
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Всего записей" value={isLoading ? "…" : samples.length} />
+          <StatCard label="Загружено записей" value={isLoading ? "…" : samples.length} />
           <StatCard label="Инспекторов" value={isLoading ? "…" : users.length} />
           <StatCard label="Объектов мониторинга" value={isLoading ? "…" : uniquePests} />
           <StatCard label="Высокий риск" value={isLoading ? "…" : highRiskCount} />
@@ -276,11 +314,26 @@ function JournalPageContent() {
           <Input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Поиск по вредителю, культуре, инспектору, координатам..."
+            placeholder="Поиск по загруженным записям..."
             className="max-w-md"
           />
+          <select
+            value={monitoringFilter}
+            onChange={(e) => setMonitoringFilter(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1.5 text-sm"
+          >
+            <option value="">Все типы</option>
+            <option value="entomology">Энтомология</option>
+            <option value="phytopathology">Фитопатология</option>
+            <option value="herbology">Гербология</option>
+          </select>
           <Badge variant="outline">С фото: {withPhotoCount}</Badge>
           <Badge variant="outline">Показано: {filteredSamples.length}</Badge>
+          {hasMore ? (
+            <Button type="button" variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
+              {loadingMore ? "Загрузка…" : `Ещё ${JOURNAL_PAGE_SIZE}`}
+            </Button>
+          ) : null}
         </div>
 
         {viewMode === "map" ? (
