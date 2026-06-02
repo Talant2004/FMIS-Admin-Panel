@@ -27,7 +27,13 @@ function parseDoc(doc: QueryDocumentSnapshot<DocumentData>): FieldSample {
   return parseSampleFromFirestore(doc.id, doc.data() as Record<string, FirestoreValue>)
 }
 
+function sampleSortTime(sample: FieldSample): number {
+  const t = sample.createdAt ? Date.parse(sample.createdAt) : NaN
+  return Number.isFinite(t) ? t : 0
+}
+
 function buildConstraints(
+  sortField: "date" | "createdAt",
   filters: JournalListFilters,
   pageSize: number,
   cursor?: QueryDocumentSnapshot<DocumentData>
@@ -39,7 +45,7 @@ function buildConstraints(
   if (filters.farmingName?.trim()) {
     constraints.push(where("farmingName", "==", filters.farmingName.trim()))
   }
-  constraints.push(orderBy("date", "desc"))
+  constraints.push(orderBy(sortField, "desc"))
   if (cursor) constraints.push(startAfter(cursor))
   constraints.push(limit(pageSize))
   return constraints
@@ -53,55 +59,80 @@ async function runQuery(
   return snap.docs
 }
 
-/** Курсорная страница журнала (по убыванию `date`). */
+function pageResult(
+  docs: QueryDocumentSnapshot<DocumentData>[],
+  pageSize: number
+): {
+  samples: FieldSample[]
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null
+  hasMore: boolean
+} {
+  const samples = docs.map(parseDoc).sort((a, b) => sampleSortTime(b) - sampleSortTime(a))
+  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null
+  return {
+    samples,
+    lastDoc,
+    hasMore: docs.length === pageSize,
+  }
+}
+
+/** Курсорная страница журнала. Несколько вариантов запроса — как в fetchJournalSamples. */
 export async function fetchJournalPage(options: {
   pageSize?: number
   cursor?: QueryDocumentSnapshot<DocumentData> | null
   filters?: JournalListFilters
+  sortField?: "date" | "createdAt"
 }): Promise<{
   samples: FieldSample[]
   lastDoc: QueryDocumentSnapshot<DocumentData> | null
   hasMore: boolean
+  sortField: "date" | "createdAt" | "none"
 }> {
   const pageSize = options.pageSize ?? JOURNAL_PAGE_SIZE
   const filters = options.filters ?? {}
   const cursor = options.cursor ?? undefined
+  const preferredSort = options.sortField
 
-  const attempts: QueryConstraint[][] = [
-    buildConstraints(filters, pageSize, cursor),
-    (() => {
-      const c: QueryConstraint[] = [orderBy("createdAt", "desc"), limit(pageSize)]
-      if (filters.monitoringType) c.unshift(where("monitoringType", "==", filters.monitoringType))
-      if (cursor) c.push(startAfter(cursor))
-      return c
-    })(),
-  ]
+  const sortAttempts: Array<"date" | "createdAt" | "none"> = preferredSort
+    ? [preferredSort]
+    : ["date", "createdAt"]
 
-  for (const constraints of attempts) {
+  for (const sort of sortAttempts) {
     try {
-      const docs = await runQuery(constraints)
-      const samples = docs.map(parseDoc)
-      const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null
-      return {
-        samples,
-        lastDoc,
-        hasMore: docs.length === pageSize,
+      if (sort === "none") {
+        if (cursor) continue
+        const docs = await runQuery([limit(pageSize)])
+        if (docs.length === 0) continue
+        return { ...pageResult(docs, pageSize), sortField: "none" }
       }
+
+      const docs = await runQuery(buildConstraints(sort, filters, pageSize, cursor))
+      if (docs.length === 0) continue
+      return { ...pageResult(docs, pageSize), sortField: sort }
     } catch {
       continue
     }
   }
 
-  return { samples: [], lastDoc: null, hasMore: false }
+  if (!cursor) {
+    try {
+      const docs = await runQuery([limit(pageSize)])
+      if (docs.length > 0) {
+        return { ...pageResult(docs, pageSize), sortField: "none" }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  return { samples: [], lastDoc: null, hasMore: false, sortField: "none" }
 }
 
-/** Первая страница без фильтров по дате (fallback для старых документов без `date`). */
-export async function fetchJournalFirstPage(
-  filters?: JournalListFilters
-): Promise<{
+export async function fetchJournalFirstPage(filters?: JournalListFilters): Promise<{
   samples: FieldSample[]
   lastDoc: QueryDocumentSnapshot<DocumentData> | null
   hasMore: boolean
+  sortField: "date" | "createdAt" | "none"
 }> {
   return fetchJournalPage({ filters, pageSize: JOURNAL_PAGE_SIZE })
 }

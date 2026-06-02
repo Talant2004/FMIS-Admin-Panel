@@ -118,6 +118,7 @@ function JournalPageContent() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
+  const [sortField, setSortField] = useState<"date" | "createdAt" | "none">("createdAt")
   const [monitoringFilter, setMonitoringFilter] = useState("")
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -139,8 +140,14 @@ function JournalPageContent() {
       setSamples(page.samples)
       setLastDoc(page.lastDoc)
       setHasMore(page.hasMore)
+      setSortField(page.sortField)
       setUsers(usersList)
       setSelectedId(page.samples[0]?.id ?? null)
+      if (page.samples.length === 0 && usersList.length > 0) {
+        setLoadError(
+          "Записи samples не загрузились. Проверьте вход (админ-email) и правила Firestore. Если в приложении поле даты — createdAt, обновите страницу после исправления."
+        )
+      }
     } catch (error) {
       console.error("Failed to load field journal data.", error)
       setLoadError(
@@ -168,7 +175,9 @@ function JournalPageContent() {
         cursor: lastDoc,
         filters: listFilters,
         pageSize: JOURNAL_PAGE_SIZE,
+        sortField: sortField === "none" ? undefined : sortField,
       })
+      setSortField(page.sortField)
       setSamples((prev) => [...prev, ...page.samples])
       setLastDoc(page.lastDoc)
       setHasMore(page.hasMore)
