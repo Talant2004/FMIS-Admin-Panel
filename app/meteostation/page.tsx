@@ -10,7 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Legend,
 } from "recharts"
 import {
   Thermometer,
@@ -39,7 +38,6 @@ interface MeteoReading {
   receivedAt: string
 }
 
-/* ─── helpers ─── */
 function fmt1(n: number | null | undefined) {
   if (n === null || n === undefined) return "—"
   return Number(n).toFixed(1)
@@ -53,8 +51,7 @@ function timeSince(iso: string) {
 }
 
 function shortTime(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+  return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
 }
 
 function trend(readings: MeteoReading[], key: keyof MeteoReading) {
@@ -67,48 +64,41 @@ function trend(readings: MeteoReading[], key: keyof MeteoReading) {
 }
 
 function TrendIcon({ dir }: { dir: string | null }) {
-  if (dir === "up")     return <TrendingUp   size={13} className="text-green-400" />
-  if (dir === "down")   return <TrendingDown size={13} className="text-red-400"   />
-  if (dir === "stable") return <Minus        size={13} className="text-slate-400" />
+  if (dir === "up")     return <TrendingUp   size={13} className="text-green-500" />
+  if (dir === "down")   return <TrendingDown size={13} className="text-red-500"   />
+  if (dir === "stable") return <Minus        size={13} className="text-muted-foreground" />
   return null
 }
 
-/* ─── sensor card ─── */
 function SensorCard({
-  icon: Icon,
-  label,
-  value,
-  unit,
-  color,
-  trendDir,
+  icon: Icon, label, value, unit, accent, trendDir,
 }: {
   icon: React.ElementType
   label: string
   value: string
   unit: string
-  color: string
+  accent: string
   trendDir?: string | null
 }) {
   return (
-    <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+    <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <div className={`p-1.5 rounded-lg bg-slate-900 ${color}`}>
-          <Icon size={15} />
+        <div className={`p-2 rounded-lg ${accent} bg-opacity-10`}>
+          <Icon size={16} className={accent.replace("bg-", "text-")} />
         </div>
         {trendDir !== undefined && <TrendIcon dir={trendDir} />}
       </div>
       <div>
-        <div className="text-2xl font-bold text-slate-100">
+        <div className="text-2xl font-bold text-foreground">
           {value}
-          <span className="text-sm font-normal text-slate-400 ml-1">{unit}</span>
+          <span className="text-sm font-normal text-muted-foreground ml-1">{unit}</span>
         </div>
-        <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
       </div>
     </div>
   )
 }
 
-/* ─── custom tooltip for charts ─── */
 function ChartTooltip({ active, payload, label }: {
   active?: boolean
   payload?: { color: string; name: string; value: number }[]
@@ -116,43 +106,38 @@ function ChartTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="text-slate-400 mb-1">{label}</p>
+    <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs shadow-lg">
+      <p className="text-muted-foreground mb-1">{label}</p>
       {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color }} className="font-mono">
-          {p.name}: <strong>{p.value}</strong>
+        <p key={i} style={{ color: p.color }} className="font-mono font-medium">
+          {p.name}: {p.value}
         </p>
       ))}
     </div>
   )
 }
 
-/* ─── history row ─── */
 function HistoryRow({ r }: { r: MeteoReading }) {
   return (
-    <tr className="border-b border-slate-800 hover:bg-slate-800/40 transition-colors text-xs">
-      <td className="py-2 px-3 text-slate-400">{timeSince(r.receivedAt)}</td>
-      <td className="py-2 px-3 font-mono">{fmt1(r.temp)}°C</td>
-      <td className="py-2 px-3 font-mono">{fmt1(r.humidity)}%</td>
-      <td className="py-2 px-3 font-mono">{fmt1(r.pressure)} гПа</td>
-      <td className="py-2 px-3 font-mono">{r.soil !== null ? fmt1(r.soil) + "°C" : "—"}</td>
+    <tr className="border-b border-border hover:bg-muted/40 transition-colors text-xs">
+      <td className="py-2 px-3 text-muted-foreground">{timeSince(r.receivedAt)}</td>
+      <td className="py-2 px-3 font-mono text-foreground">{fmt1(r.temp)}°C</td>
+      <td className="py-2 px-3 font-mono text-foreground">{fmt1(r.humidity)}%</td>
+      <td className="py-2 px-3 font-mono text-foreground">{fmt1(r.pressure)} гПа</td>
+      <td className="py-2 px-3 font-mono text-foreground">{r.soil !== null ? fmt1(r.soil) + "°C" : "—"}</td>
     </tr>
   )
 }
 
-/* ─── chart tab type ─── */
 type ChartTab = "temp" | "humidity" | "pressure" | "soil"
 
 const CHART_TABS: { id: ChartTab; label: string; color: string; unit: string }[] = [
   { id: "temp",     label: "Темп. воздуха", color: "#f97316", unit: "°C"  },
-  { id: "humidity", label: "Влажность",     color: "#60a5fa", unit: "%"   },
-  { id: "pressure", label: "Давление",      color: "#a78bfa", unit: "гПа" },
-  { id: "soil",     label: "Темп. почвы",   color: "#facc15", unit: "°C"  },
+  { id: "humidity", label: "Влажность",     color: "#3b82f6", unit: "%"   },
+  { id: "pressure", label: "Давление",      color: "#8b5cf6", unit: "гПа" },
+  { id: "soil",     label: "Темп. почвы",   color: "#eab308", unit: "°C"  },
 ]
 
-/* ═══════════════════════════════════════════════════════════════
-   MAIN PAGE
-   ═══════════════════════════════════════════════════════════════ */
 export default function MeteoStationPage() {
   const [readings,    setReadings]    = useState<MeteoReading[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -178,12 +163,11 @@ export default function MeteoStationPage() {
   }, [load, autoRefresh])
 
   const latest = readings[0] ?? null
-  const online = latest && (Date.now() - new Date(latest.receivedAt).getTime()) < 5_400_000 // 90 мин
+  const online = latest && (Date.now() - new Date(latest.receivedAt).getTime()) < 5_400_000
 
-  /* chart data — хронологический порядок (старые → новые) */
   const chartData = [...readings]
     .reverse()
-    .slice(-48)   // последние 48 точек = 24 часа при авто-отправке каждые 30 мин
+    .slice(-48)
     .map(r => ({
       t:        shortTime(r.receivedAt),
       temp:     Number(r.temp.toFixed(1)),
@@ -198,36 +182,36 @@ export default function MeteoStationPage() {
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
 
-        {/* ── header ── */}
+        {/* header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2">
               🌿 Метеостанция
               {latest && (
-                <span className="text-sm font-normal text-slate-400">— {latest.name}</span>
+                <span className="text-sm font-normal text-muted-foreground">— {latest.name}</span>
               )}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Данные с ESP32 · авто-отправка каждые 30 мин ·{" "}
-              {lastFetch ? `сайт обновлён ${timeSince(lastFetch.toISOString())}` : "загрузка..."}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              ESP32 · авто-отправка каждые 30 мин ·{" "}
+              {lastFetch ? `обновлено ${timeSince(lastFetch.toISOString())}` : "загрузка..."}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {latest && (
               <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${
                 online
-                  ? "bg-green-950 text-green-400 border-green-800"
-                  : "bg-slate-900 text-slate-400 border-slate-700"
+                  ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800"
+                  : "bg-muted text-muted-foreground border-border"
               }`}>
                 {online ? <Wifi size={11} /> : <WifiOff size={11} />}
-                {online ? "Онлайн" : "Нет данных"}
+                {online ? "Онлайн" : "Оффлайн"}
               </span>
             )}
             <button
               onClick={() => { setLoading(true); load() }}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-muted border border-border hover:bg-muted/80 transition-colors text-foreground"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               Обновить
@@ -236,8 +220,8 @@ export default function MeteoStationPage() {
               onClick={() => setAutoRefresh(v => !v)}
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                 autoRefresh
-                  ? "bg-green-900 border-green-700 text-green-300"
-                  : "bg-slate-800 border-slate-700 text-slate-400"
+                  ? "bg-green-600 border-green-600 text-white"
+                  : "bg-muted border-border text-muted-foreground"
               }`}
             >
               {autoRefresh ? "Авто ВКЛ" : "Авто ВЫКЛ"}
@@ -245,48 +229,47 @@ export default function MeteoStationPage() {
           </div>
         </div>
 
-        {/* ── no data ── */}
+        {/* no data */}
         {!loading && readings.length === 0 && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-8 text-center">
-            <WifiOff size={32} className="mx-auto mb-3 text-slate-500" />
-            <p className="text-slate-400 font-medium">Данных пока нет</p>
-            <p className="text-slate-500 text-sm mt-1">
+          <div className="bg-card border border-border rounded-xl p-10 text-center">
+            <WifiOff size={32} className="mx-auto mb-3 text-muted-foreground" />
+            <p className="font-medium text-foreground">Данных пока нет</p>
+            <p className="text-muted-foreground text-sm mt-1">
               Подключитесь к точке доступа{" "}
-              <code className="text-green-400">MeteoStation_Setup</code> и настройте Wi-Fi
+              <code className="text-green-600 font-mono">MeteoStation_Setup</code> и настройте Wi-Fi
             </p>
           </div>
         )}
 
-        {/* ── sensor cards ── */}
+        {/* sensor cards */}
         {latest && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <SensorCard icon={Thermometer} label="Темп. воздуха"
-              value={fmt1(latest.temp)} unit="°C" color="text-orange-400"
+              value={fmt1(latest.temp)} unit="°C" accent="bg-orange-500"
               trendDir={trend(readings, "temp")} />
             <SensorCard icon={Droplets} label="Влажность"
-              value={fmt1(latest.humidity)} unit="%" color="text-blue-400"
+              value={fmt1(latest.humidity)} unit="%" accent="bg-blue-500"
               trendDir={trend(readings, "humidity")} />
             <SensorCard icon={Gauge} label="Давление"
-              value={fmt1(latest.pressure)} unit="гПа" color="text-purple-400"
+              value={fmt1(latest.pressure)} unit="гПа" accent="bg-violet-500"
               trendDir={trend(readings, "pressure")} />
             <SensorCard icon={Layers} label="Темп. почвы"
               value={latest.soil !== null ? fmt1(latest.soil) : "—"}
-              unit={latest.soil !== null ? "°C" : ""} color="text-yellow-400"
+              unit={latest.soil !== null ? "°C" : ""} accent="bg-yellow-500"
               trendDir={latest.soil !== null ? trend(readings, "soil") : null} />
           </div>
         )}
 
-        {/* ── динамика (графики) ── */}
+        {/* chart */}
         {chartData.length > 1 && (
-          <div className="bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden">
-            <div className="px-4 pt-4 pb-2 border-b border-slate-700">
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 pt-4 pb-3 border-b border-border">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <span className="text-sm font-semibold">Динамика показаний</span>
-                <span className="text-xs text-slate-500">
-                  {chartData.length} точек · последние ~{Math.round(chartData.length * 0.5)} ч.
+                <span className="text-sm font-semibold text-foreground">Динамика показаний</span>
+                <span className="text-xs text-muted-foreground">
+                  {chartData.length} точек · ~{Math.round(chartData.length * 0.5)} ч.
                 </span>
               </div>
-              {/* tabs */}
               <div className="flex gap-1 mt-3 flex-wrap">
                 {CHART_TABS.map(c => (
                   <button
@@ -294,8 +277,8 @@ export default function MeteoStationPage() {
                     onClick={() => setActiveChart(c.id)}
                     className={`text-xs px-3 py-1 rounded-md border transition-colors ${
                       activeChart === c.id
-                        ? "border-transparent text-slate-900 font-semibold"
-                        : "border-slate-700 text-slate-400 hover:text-slate-300 bg-transparent"
+                        ? "border-transparent text-white font-semibold"
+                        : "border-border text-muted-foreground hover:text-foreground"
                     }`}
                     style={activeChart === c.id ? { background: c.color } : {}}
                   >
@@ -304,80 +287,63 @@ export default function MeteoStationPage() {
                 ))}
               </div>
             </div>
-
             <div className="px-2 py-4">
-              <ResponsiveContainer width="100%" height={220}>
+              <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={chartData} margin={{ top: 4, right: 16, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis
-                    dataKey="t"
-                    tick={{ fill: "#64748b", fontSize: 10 }}
-                    tickLine={false}
-                    axisLine={{ stroke: "#334155" }}
-                    interval="preserveStartEnd"
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="t"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                    tickLine={false} axisLine={false} interval="preserveStartEnd" />
                   <YAxis
-                    tick={{ fill: "#64748b", fontSize: 10 }}
-                    tickLine={false}
-                    axisLine={false}
-                    unit={tab.unit}
-                    width={52}
-                  />
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                    tickLine={false} axisLine={false} unit={tab.unit} width={52} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey={activeChart}
+                  <Line type="monotone" dataKey={activeChart}
                     name={`${tab.label}, ${tab.unit}`}
-                    stroke={tab.color}
-                    strokeWidth={2}
+                    stroke={tab.color} strokeWidth={2}
                     dot={chartData.length <= 12}
-                    activeDot={{ r: 4, stroke: tab.color, strokeWidth: 2 }}
-                    connectNulls
-                  />
+                    activeDot={{ r: 4 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
         )}
 
-        {/* ── location + time ── */}
+        {/* location + time */}
         {latest && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
-                <MapPin size={14} className="text-green-400" />
-                <span className="text-sm font-semibold">Координаты станции</span>
+                <MapPin size={14} className="text-green-600" />
+                <span className="text-sm font-semibold text-foreground">Координаты станции</span>
               </div>
               {latest.lat !== 0 || latest.lng !== 0 ? (
                 <>
-                  <p className="text-sm font-mono text-slate-300">
+                  <p className="text-sm font-mono text-foreground">
                     {latest.lat.toFixed(6)}, {latest.lng.toFixed(6)}
                   </p>
-                  <a
-                    href={`https://www.google.com/maps?q=${latest.lat},${latest.lng}`}
+                  <a href={`https://www.google.com/maps?q=${latest.lat},${latest.lng}`}
                     target="_blank" rel="noreferrer"
-                    className="inline-block mt-2 text-xs text-blue-400 hover:underline"
-                  >
+                    className="inline-block mt-2 text-xs text-blue-600 hover:underline">
                     Открыть в Google Maps ↗
                   </a>
                 </>
               ) : (
-                <p className="text-sm text-slate-500">Координаты не установлены</p>
+                <p className="text-sm text-muted-foreground">Координаты не установлены</p>
               )}
             </div>
 
-            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Clock size={14} className="text-slate-400" />
-                <span className="text-sm font-semibold">Последнее показание</span>
+                <Clock size={14} className="text-muted-foreground" />
+                <span className="text-sm font-semibold text-foreground">Последнее показание</span>
               </div>
-              <p className="text-sm font-mono text-slate-300">{latest.time}</p>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-sm font-mono text-foreground">{latest.time}</p>
+              <p className="text-xs text-muted-foreground mt-1">
                 Получено: {timeSince(latest.receivedAt)}
               </p>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Следующая авто-отправка через ~{" "}
-                {(() => {
+              <p className="text-xs text-muted-foreground/60 mt-0.5">
+                Следующая отправка через ~{(() => {
                   const minAgo = Math.floor((Date.now() - new Date(latest.receivedAt).getTime()) / 60000)
                   const remain = Math.max(0, 30 - minAgo)
                   return remain === 0 ? "менее минуты" : `${remain} мин.`
@@ -387,17 +353,17 @@ export default function MeteoStationPage() {
           </div>
         )}
 
-        {/* ── history table ── */}
+        {/* history table */}
         {readings.length > 1 && (
-          <div className="bg-slate-800/60 border border-slate-700 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-              <span className="text-sm font-semibold">История показаний</span>
-              <span className="text-xs text-slate-500">{readings.length} записей</span>
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">История показаний</span>
+              <span className="text-xs text-muted-foreground">{readings.length} записей</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-700 text-xs text-slate-500">
+                  <tr className="border-b border-border text-xs text-muted-foreground">
                     <th className="py-2 px-3 text-left font-medium">Когда</th>
                     <th className="py-2 px-3 text-left font-medium">Темп.</th>
                     <th className="py-2 px-3 text-left font-medium">Влажн.</th>
@@ -406,37 +372,12 @@ export default function MeteoStationPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {readings.slice(0, 24).map((r, i) => (
-                    <HistoryRow key={i} r={r} />
-                  ))}
+                  {readings.slice(0, 24).map((r, i) => <HistoryRow key={i} r={r} />)}
                 </tbody>
               </table>
             </div>
           </div>
         )}
-
-        {/* ── setup guide ── */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-          <h3 className="text-sm font-semibold mb-3 text-slate-300">Как подключить ESP32</h3>
-          <ol className="space-y-2 text-sm text-slate-400 list-none">
-            {[
-              "Прошейте ESP32 скетчем meteo.ino",
-              "Включите — появится точка доступа «MeteoStation_Setup»",
-              "Подключите телефон → автоматически откроется портал настройки",
-              "Выберите свою Wi-Fi, введите пароль, нажмите «Получить GPS»",
-              "Нажмите «Подключить» — ESP32 выйдет в интернет",
-              "Данные будут поступать сюда автоматически каждые 30 минут",
-              "Можно также нажать «Отправить сейчас» на портале устройства",
-            ].map((step, i) => (
-              <li key={i} className="flex gap-2.5">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-green-900 text-green-400 text-xs flex items-center justify-center font-bold">
-                  {i + 1}
-                </span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
 
       </div>
     </div>
