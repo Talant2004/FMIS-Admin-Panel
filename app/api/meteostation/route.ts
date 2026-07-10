@@ -1,4 +1,13 @@
 import { NextResponse } from "next/server"
+import {
+  collection,
+  addDoc,
+  getDocs,
+  orderBy,
+  query,
+  limit,
+} from "firebase/firestore"
+import { getDb } from "@/lib/firebase"
 
 export interface MeteoReading {
   temp: number
@@ -12,33 +21,55 @@ export interface MeteoReading {
   receivedAt: string
 }
 
-// In-memory store (last 100 readings per station name)
-// For production, swap this with Firestore / DB
-const store: MeteoReading[] = []
-const MAX_READINGS = 100
+const COLLECTION = "meteostation"
 
+/* ── POST: ESP32 отправляет показания ── */
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+
     const reading: MeteoReading = {
       temp:       Number(body.temp)     || 0,
       humidity:   Number(body.humidity) || 0,
       pressure:   Number(body.pressure) || 0,
-      soil:       body.soil !== undefined && body.soil !== null ? Number(body.soil) : null,
-      lat:        Number(body.lat)      || 0,
-      lng:        Number(body.lng)      || 0,
-      name:       String(body.name || "Метеостанция"),
-      time:       String(body.time || new Date().toISOString()),
+      soil:       body.soil !== null && body.soil !== undefined
+                    ? Number(body.soil) : null,
+      lat:        Number(body.lat)  || 0,
+      lng:        Number(body.lng)  || 0,
+      name:       String(body.name  || "Meteostation"),
+      time:       String(body.time  || new Date().toISOString()),
       receivedAt: new Date().toISOString(),
     }
-    store.unshift(reading)
-    if (store.length > MAX_READINGS) store.length = MAX_READINGS
+
+    const db  = getDb()
+    const col = collection(db, COLLECTION)
+    await addDoc(col, reading)
+
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 })
+  } catch (err) {
+    console.error("meteostation POST error:", err)
+    return NextResponse.json(
+      { ok: false, error: String(err) },
+      { status: 500 }
+    )
   }
 }
 
+/* ── GET: сайт читает последние 100 показаний ── */
 export async function GET() {
-  return NextResponse.json(store)
+  try {
+    const db  = getDb()
+    const col = collection(db, COLLECTION)
+    const q   = query(col, orderBy("receivedAt", "desc"), limit(100))
+    const snap = await getDocs(q)
+
+    const readings: MeteoReading[] = snap.docs.map(
+      d => d.data() as MeteoReading
+    )
+
+    return NextResponse.json(readings)
+  } catch (err) {
+    console.error("meteostation GET error:", err)
+    return NextResponse.json([], { status: 500 })
+  }
 }

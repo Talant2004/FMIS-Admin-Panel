@@ -1,19 +1,18 @@
 /*
   MeteoStation ESP32
-  ─────────────────────────────────────────────────────────────────
+  -----------------------------------------------------------------
   Режим 1 (AP/Captive Portal):
-    • Создаёт точку доступа «MeteoStation_Setup»
-    • DNS redirect → браузер телефона автоматически открывает портал
-    • Портал:  список Wi-Fi сетей | поля SSID/пароль | кнопка GPS
-    • После ввода данных — подключается к интернету (STA)
+    Создаёт точку доступа "MeteoStation_Setup"
+    DNS redirect - браузер телефона автоматически открывает портал
+    Портал: список Wi-Fi сетей, поля SSID/пароль, кнопка GPS
+    После ввода данных - подключается к интернету (STA)
 
   Режим 2 (STA, подключён):
-    • Принимает данные с датчиков
-    • По кнопке «Отправить» на портале шлёт POST на FMIS API
-    • Каждые 3 с выводит строку в Serial (для отладки)
+    Авто-отправка данных каждые 30 минут на FMIS API
+    Ручная отправка по кнопке на портале
 
   Датчики: BME280 (I2C), DS18B20 (OneWire), RTC DS3231
-  ─────────────────────────────────────────────────────────────────
+  -----------------------------------------------------------------
 */
 
 #include <Wire.h>
@@ -27,48 +26,46 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-/* ─── пины ─── */
+/* --- пины --- */
 #define PIN_DS18B20 13
 #define SDA_PIN     21
 #define SCL_PIN     22
 
-/* ─── AP настройки ─── */
+/* --- AP настройки --- */
 const char* AP_SSID     = "MeteoStation_Setup";
-const char* AP_PASSWORD = "";              // открытая сеть
+const char* AP_PASSWORD = "";
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-/* ─── FMIS API ─── */
-// Замените на реальный URL вашего сервера
-const char* FMIS_API_URL = "https://your-fmis-app.vercel.app/api/meteostation";
+/* --- FMIS API --- */
+// Замените на реальный URL вашего сервера Vercel
+const char* FMIS_API_URL = "https://fmis-admin-panel.vercel.app/api/meteostation";
 
-/* ─── Авто-отправка ─── */
-const uint32_t AUTO_SEND_INTERVAL = 30UL * 60UL * 1000UL;  // 30 минут в мс
+/* --- Авто-отправка --- */
+const uint32_t AUTO_SEND_INTERVAL = 30UL * 60UL * 1000UL;  // 30 минут
 uint32_t lastAutoSend = 0;
 
-/* ─── объекты ─── */
-Adafruit_BME280 bme;
-RTC_DS3231      rtc;
-OneWire         ow(PIN_DS18B20);
+/* --- объекты --- */
+Adafruit_BME280   bme;
+RTC_DS3231        rtc;
+OneWire           ow(PIN_DS18B20);
 DallasTemperature ds(&ow);
-WebServer       server(80);
-DNSServer       dns;
-Preferences     prefs;
+WebServer         server(80);
+DNSServer         dns;
+Preferences       prefs;
 
-bool bme_ok    = false;
-bool connected = false;   // подключён к STA Wi-Fi
+bool   bme_ok    = false;
+bool   connected = false;
+float  stationLat  = 0.0;
+float  stationLng  = 0.0;
+String stationName = "Meteostation";
 
-/* GPS / station coords (устанавливаются через портал) */
-float stationLat = 0.0;
-float stationLng = 0.0;
-String stationName = "Метеостанция";
-
-/* ═══════════════════════════════════════════════════════════════
+/* =================================================================
    ДАТЧИКИ
-   ═══════════════════════════════════════════════════════════════ */
+   ================================================================= */
 struct SensorData {
-  float tempAir, humidity, pressure, soilTemp;
-  bool  soilOk;
+  float  tempAir, humidity, pressure, soilTemp;
+  bool   soilOk;
   String timeStr;
 };
 
@@ -108,14 +105,17 @@ String sensorJson(const SensorData& d) {
   return j;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   HTML СТРАНИЦЫ
-   ═══════════════════════════════════════════════════════════════ */
+/* =================================================================
+   HTML
+   ВАЖНО: делимитер R"~( ... )~" — строка заканчивается ТОЛЬКО на )~"
+   Это позволяет содержать onclick="func()" без преждевременного
+   завершения строки.
+   ================================================================= */
 String htmlHead(const String& title) {
-  return R"(<!DOCTYPE html><html lang="ru"><head>
+  return String(R"~(<!DOCTYPE html><html lang="ru"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>)" + title + R"(</title>
+<title>)~") + title + R"~(</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:16px}
@@ -123,72 +123,66 @@ h1{font-size:1.3rem;font-weight:700;color:#4ade80;margin-bottom:4px}
 .sub{color:#94a3b8;font-size:.8rem;margin-bottom:20px}
 .card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:16px}
 label{display:block;font-size:.75rem;color:#94a3b8;margin-bottom:4px;margin-top:10px}
-input,select{width:100%;padding:8px 10px;background:#0f172a;border:1px solid #475569;
+input{width:100%;padding:8px 10px;background:#0f172a;border:1px solid #475569;
 border-radius:8px;color:#e2e8f0;font-size:.9rem;outline:none}
-input:focus,select:focus{border-color:#4ade80}
+input:focus{border-color:#4ade80}
 button{display:block;width:100%;padding:11px;margin-top:12px;border:none;border-radius:8px;
 font-size:.95rem;font-weight:600;cursor:pointer;transition:.2s}
-.btn-green{background:#16a34a;color:#fff}
-.btn-green:hover{background:#15803d}
-.btn-blue{background:#2563eb;color:#fff}
-.btn-blue:hover{background:#1d4ed8}
+.btn-green{background:#16a34a;color:#fff}.btn-green:hover{background:#15803d}
+.btn-blue{background:#2563eb;color:#fff}.btn-blue:hover{background:#1d4ed8}
 .btn-gray{background:#334155;color:#e2e8f0}
 .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:600}
 .badge-green{background:#14532d;color:#4ade80}
-.badge-red{background:#450a0a;color:#f87171}
 .net-item{display:flex;justify-content:space-between;align-items:center;
-padding:8px 0;border-bottom:1px solid #1e293b;cursor:pointer}
+padding:8px 0;border-bottom:1px solid #334155;cursor:pointer}
 .net-item:hover{color:#4ade80}
 .rssi{font-size:.75rem;color:#64748b}
 .sensor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
 .sensor-box{background:#0f172a;border-radius:8px;padding:10px;text-align:center}
 .sensor-val{font-size:1.4rem;font-weight:700;color:#4ade80}
 .sensor-lbl{font-size:.7rem;color:#94a3b8;margin-top:2px}
-#status{margin-top:12px;padding:10px;border-radius:8px;font-size:.85rem;display:none}
+#status,#sendStatus{margin-top:12px;padding:10px;border-radius:8px;font-size:.85rem;display:none}
 .info{background:#1e3a5f;color:#93c5fd}
 .success{background:#14532d;color:#4ade80}
 .error{background:#450a0a;color:#f87171}
 </style></head><body>
-)";
+)~";
 }
 
-/* ── Главная страница портала (настройка WiFi) ── */
+/* -- Страница настройки WiFi (captive portal) -- */
 String pageSetup() {
-  String html = htmlHead("MeteoStation — Настройка");
-  html += R"(
-<h1>🌿 MeteoStation</h1>
-<p class="sub">Настройка подключения к интернету</p>
+  String html = htmlHead("MeteoStation Setup");
+  html += R"~(
+<h1>MeteoStation</h1>
+<p class="sub">Wi-Fi Setup</p>
 
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center">
-    <span style="font-size:.85rem;font-weight:600">Доступные сети Wi-Fi</span>
-    <button class="btn-gray" onclick="scanWifi()"
-      style="width:auto;padding:5px 12px;font-size:.75rem;margin:0">🔄 Обновить</button>
+    <span style="font-size:.85rem;font-weight:600">Available Wi-Fi networks</span>
+    <button class="btn-gray" id="btnScan"
+      style="width:auto;padding:5px 12px;font-size:.75rem;margin:0">Scan</button>
   </div>
   <div id="netList" style="margin-top:10px">
-    <p style="color:#64748b;font-size:.8rem">Загрузка...</p>
+    <p style="color:#64748b;font-size:.8rem">Scanning...</p>
   </div>
 </div>
 
 <div class="card">
-  <span style="font-size:.85rem;font-weight:600">Подключение</span>
-  <label>Имя сети (SSID)</label>
-  <input id="ssid" type="text" placeholder="Введите или выберите сеть выше">
-  <label>Пароль</label>
-  <input id="pass" type="password" placeholder="Пароль Wi-Fi">
-
-  <label>Имя станции</label>
-  <input id="name" type="text" value="Метеостанция" placeholder="Название этой станции">
-
-  <label>Координаты (GPS)</label>
+  <span style="font-size:.85rem;font-weight:600">Connection</span>
+  <label>Network name (SSID)</label>
+  <input id="ssid" type="text" placeholder="Select above or type here">
+  <label>Password</label>
+  <input id="pass" type="password" placeholder="Wi-Fi password">
+  <label>Station name</label>
+  <input id="sname" type="text" value="Meteostation" placeholder="Station label">
+  <label>GPS coordinates</label>
   <div style="display:flex;gap:8px;margin-top:4px">
-    <input id="lat" type="number" step="0.000001" placeholder="Широта" style="flex:1">
-    <input id="lng" type="number" step="0.000001" placeholder="Долгота" style="flex:1">
+    <input id="lat" type="number" step="0.000001" placeholder="Latitude"  style="flex:1">
+    <input id="lng" type="number" step="0.000001" placeholder="Longitude" style="flex:1">
   </div>
-  <button class="btn-blue" onclick="getGPS()">📍 Получить GPS с телефона</button>
-
+  <button class="btn-blue" id="btnGps">Get GPS from phone</button>
   <div id="status"></div>
-  <button class="btn-green" onclick="doConnect()">✅ Подключить</button>
+  <button class="btn-green" id="btnConn">Connect</button>
 </div>
 
 <script>
@@ -197,164 +191,184 @@ function showStatus(msg, cls) {
   s.textContent = msg; s.className = cls; s.style.display = 'block';
 }
 
-function getGPS() {
-  showStatus('Запрашиваю GPS...', 'info');
-  if (!navigator.geolocation) { showStatus('GPS недоступен на этом устройстве', 'error'); return; }
+document.getElementById('btnGps').onclick = function() {
+  showStatus('Requesting GPS...', 'info');
+  if (!navigator.geolocation) { showStatus('GPS not available', 'error'); return; }
   navigator.geolocation.getCurrentPosition(function(pos) {
     document.getElementById('lat').value = pos.coords.latitude.toFixed(6);
     document.getElementById('lng').value = pos.coords.longitude.toFixed(6);
-    showStatus('✅ Координаты получены: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4), 'success');
+    showStatus('Coordinates: ' + pos.coords.latitude.toFixed(4) + ', ' + pos.coords.longitude.toFixed(4), 'success');
   }, function(e) {
-    showStatus('Ошибка GPS: ' + e.message, 'error');
+    showStatus('GPS error: ' + e.message, 'error');
   }, {enableHighAccuracy: true, timeout: 10000});
-}
+};
 
 function scanWifi() {
-  document.getElementById('netList').innerHTML = '<p style="color:#64748b;font-size:.8rem">Сканирование...</p>';
-  fetch('/scan').then(r => r.json()).then(function(nets) {
-    if (!nets.length) { document.getElementById('netList').innerHTML = '<p style="color:#64748b;font-size:.8rem">Сети не найдены</p>'; return; }
+  document.getElementById('netList').innerHTML = '<p style="color:#64748b;font-size:.8rem">Scanning...</p>';
+  fetch('/scan').then(function(r){ return r.json(); }).then(function(nets) {
+    if (!nets.length) {
+      document.getElementById('netList').innerHTML = '<p style="color:#64748b;font-size:.8rem">No networks found</p>';
+      return;
+    }
     var html = '';
-    nets.forEach(function(n) {
-      var bars = n.rssi > -60 ? '▂▄▆█' : n.rssi > -75 ? '▂▄▆' : n.rssi > -85 ? '▂▄' : '▂';
-      html += '<div class="net-item" onclick="document.getElementById(\'ssid\').value=\'' + n.ssid.replace(/'/g,"\\'") + '\'">'
-            + '<span>' + n.ssid + (n.secure ? ' 🔒' : '') + '</span>'
-            + '<span class="rssi">' + bars + ' ' + n.rssi + ' dBm</span></div>';
-    });
+    for (var i = 0; i < nets.length; i++) {
+      var n = nets[i];
+      var bars = n.rssi > -60 ? '||||' : n.rssi > -75 ? '|||' : n.rssi > -85 ? '||' : '|';
+      var lock = n.secure ? ' [lock]' : '';
+      var ssid = n.ssid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      html += '<div class="net-item" id="net' + i + '">'
+            + '<span>' + n.ssid + lock + '</span>'
+            + '<span class="rssi">' + bars + ' ' + n.rssi + 'dBm</span></div>';
+    }
     document.getElementById('netList').innerHTML = html;
+    for (var i = 0; i < nets.length; i++) {
+      (function(name) {
+        document.getElementById('net' + i).onclick = function() {
+          document.getElementById('ssid').value = name;
+        };
+      })(nets[i].ssid);
+    }
   }).catch(function() {
-    document.getElementById('netList').innerHTML = '<p style="color:#f87171;font-size:.8rem">Ошибка сканирования</p>';
+    document.getElementById('netList').innerHTML = '<p style="color:#f87171;font-size:.8rem">Scan failed</p>';
   });
 }
 
-function doConnect() {
+document.getElementById('btnScan').onclick = scanWifi;
+
+document.getElementById('btnConn').onclick = function() {
   var ssid = document.getElementById('ssid').value.trim();
   var pass = document.getElementById('pass').value;
   var lat  = document.getElementById('lat').value;
   var lng  = document.getElementById('lng').value;
-  var name = document.getElementById('name').value.trim() || 'Метеостанция';
-  if (!ssid) { showStatus('Введите имя сети', 'error'); return; }
-  showStatus('Подключаюсь...', 'info');
+  var name = document.getElementById('sname').value.trim() || 'Meteostation';
+  if (!ssid) { showStatus('Enter network name', 'error'); return; }
+  showStatus('Connecting...', 'info');
   var body = 'ssid=' + encodeURIComponent(ssid)
            + '&pass=' + encodeURIComponent(pass)
            + '&lat='  + encodeURIComponent(lat)
            + '&lng='  + encodeURIComponent(lng)
            + '&name=' + encodeURIComponent(name);
   fetch('/connect', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: body})
-    .then(r => r.json()).then(function(res) {
-      if (res.ok) showStatus('✅ Подключение выполнено! Переходите на страницу датчиков.', 'success');
-      else         showStatus('❌ Ошибка подключения: ' + res.msg, 'error');
-    }).catch(function() { showStatus('❌ Нет ответа от устройства', 'error'); });
-}
+    .then(function(r){ return r.json(); }).then(function(res) {
+      if (res.ok) showStatus('Connected! Open sensor page.', 'success');
+      else        showStatus('Failed: ' + res.msg, 'error');
+    }).catch(function() { showStatus('No response from device', 'error'); });
+};
 
 scanWifi();
 </script>
-)";
+)~";
   return html + "</body></html>";
 }
 
-/* ── Страница данных датчиков (когда подключён) ── */
+/* -- Страница данных датчиков (STA режим) -- */
 String pageSensors() {
   SensorData d = readSensors();
-  // Сколько секунд до следующей авто-отправки
   uint32_t elapsed = (millis() - lastAutoSend) / 1000;
-  uint32_t remain  = (AUTO_SEND_INTERVAL / 1000 > elapsed) ? (AUTO_SEND_INTERVAL / 1000 - elapsed) : 0;
+  uint32_t remain  = (AUTO_SEND_INTERVAL / 1000 > elapsed)
+                     ? (AUTO_SEND_INTERVAL / 1000 - elapsed) : 0;
 
-  String html = htmlHead("MeteoStation — Данные");
-  html += R"(
-<h1>🌿 MeteoStation</h1>
-<p class="sub">)" + stationName + R"(</p>
+  String html = htmlHead("MeteoStation Data");
+
+  html += R"~(
+<h1>MeteoStation</h1>
+<p class="sub">)~" + stationName + R"~(</p>
 
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span style="font-size:.85rem;font-weight:600">Показания датчиков</span>
-    <span class="badge badge-green">● Online</span>
+    <span style="font-size:.85rem;font-weight:600">Sensor readings</span>
+    <span class="badge badge-green">ONLINE</span>
   </div>
   <div class="sensor-grid">
     <div class="sensor-box">
-      <div class="sensor-val" id="vTemp">)" + String(d.tempAir, 1) + R"(°C</div>
-      <div class="sensor-lbl">Температура воздуха</div>
+      <div class="sensor-val" id="vTemp">)~" + String(d.tempAir, 1) + R"~(C</div>
+      <div class="sensor-lbl">Air temperature</div>
     </div>
     <div class="sensor-box">
-      <div class="sensor-val" id="vHum">)" + String(d.humidity, 1) + R"(%</div>
-      <div class="sensor-lbl">Влажность</div>
+      <div class="sensor-val" id="vHum">)~" + String(d.humidity, 1) + R"~(%</div>
+      <div class="sensor-lbl">Humidity</div>
     </div>
     <div class="sensor-box">
-      <div class="sensor-val" id="vPress">)" + String(d.pressure, 1) + R"(</div>
-      <div class="sensor-lbl">Давление, гПа</div>
+      <div class="sensor-val" id="vPress">)~" + String(d.pressure, 1) + R"~(</div>
+      <div class="sensor-lbl">Pressure, hPa</div>
     </div>
     <div class="sensor-box">
-      <div class="sensor-val" id="vSoil">)" + (d.soilOk ? String(d.soilTemp, 1) + "°C" : String("—")) + R"(</div>
-      <div class="sensor-lbl">Темп. почвы</div>
+      <div class="sensor-val" id="vSoil">)~"
+    + (d.soilOk ? String(d.soilTemp, 1) + "C" : String("--"))
+    + R"~(</div>
+      <div class="sensor-lbl">Soil temperature</div>
     </div>
   </div>
-  <p style="font-size:.7rem;color:#64748b;margin-top:8px;text-align:right" id="vTime">)" + d.timeStr + R"(</p>
+  <p style="font-size:.7rem;color:#64748b;margin-top:8px;text-align:right" id="vTime">)~"
+  + d.timeStr + R"~(</p>
 </div>
 
 <div class="card">
-  <span style="font-size:.85rem;font-weight:600">Координаты станции</span>
+  <span style="font-size:.85rem;font-weight:600">Station location</span>
   <p style="font-size:.8rem;color:#94a3b8;margin-top:6px">
-    📍 )" + String(stationLat, 6) + R"(, )" + String(stationLng, 6) + R"(
+    Lat: )~" + String(stationLat, 6) + R"~( Lon: )~" + String(stationLng, 6) + R"~(
   </p>
 </div>
 
 <div class="card">
-  <span style="font-size:.85rem;font-weight:600">Отправка на FMIS</span>
+  <span style="font-size:.85rem;font-weight:600">Send to FMIS</span>
   <p style="font-size:.75rem;color:#64748b;margin-top:6px">
-    ⏱ Авто-отправка через: <span id="countdown">)" + String(remain) + R"(</span> сек
+    Auto-send in: <span id="countdown">)~" + String(remain) + R"~(</span> sec
   </p>
   <div id="sendStatus"></div>
-  <button class="btn-green" onclick="sendNow()" style="margin-top:10px">🚀 Отправить сейчас</button>
-  <button class="btn-gray" onclick="location.reload()" style="margin-top:8px">🔄 Обновить показания</button>
+  <button class="btn-green" id="btnSend" style="margin-top:10px">Send now</button>
+  <button class="btn-gray"  id="btnRef"  style="margin-top:8px">Refresh readings</button>
 </div>
 
 <script>
-var countdown = )" + String(remain) + R"(;
+var countdown = )~" + String(remain) + R"~(;
 
-function sendNow() {
+document.getElementById('btnSend').onclick = function() {
   var s = document.getElementById('sendStatus');
-  s.textContent = 'Отправка...'; s.className = 'info'; s.style.display='block';
+  s.textContent = 'Sending...'; s.className = 'info'; s.style.display = 'block';
   fetch('/send', {method:'POST'})
-    .then(r => r.json()).then(function(res) {
-      if (res.ok) { s.textContent = '✅ Данные отправлены на FMIS'; s.className = 'success'; countdown = 1800; }
-      else         { s.textContent = '❌ Ошибка: ' + res.msg; s.className = 'error'; }
+    .then(function(r){ return r.json(); }).then(function(res) {
+      if (res.ok) { s.textContent = 'Sent to FMIS successfully'; s.className = 'success'; countdown = 1800; }
+      else        { s.textContent = 'Error: ' + res.msg; s.className = 'error'; }
       s.style.display = 'block';
     }).catch(function() {
-      s.textContent = '❌ Нет ответа'; s.className = 'error'; s.style.display='block';
+      s.textContent = 'No response'; s.className = 'error'; s.style.display = 'block';
     });
-}
+};
 
-// Обратный отсчёт до авто-отправки
+document.getElementById('btnRef').onclick = function() { location.reload(); };
+
+// Countdown
 setInterval(function() {
   if (countdown > 0) countdown--;
   var m = Math.floor(countdown / 60), s = countdown % 60;
   document.getElementById('countdown').textContent =
-    (m > 0 ? m + ' мин ' : '') + s + ' сек';
+    (m > 0 ? m + 'm ' : '') + s + 's';
 }, 1000);
 
-// Авто-обновление показаний каждые 15 сек
+// Auto-refresh readings every 15 sec
 setInterval(function() {
-  fetch('/api/sensors').then(r => r.json()).then(function(d) {
-    document.getElementById('vTemp').textContent  = d.temp + '°C';
+  fetch('/api/sensors').then(function(r){ return r.json(); }).then(function(d) {
+    document.getElementById('vTemp').textContent  = d.temp + 'C';
     document.getElementById('vHum').textContent   = d.humidity + '%';
     document.getElementById('vPress').textContent = d.pressure;
-    document.getElementById('vSoil').textContent  = d.soil !== null ? d.soil + '°C' : '—';
+    document.getElementById('vSoil').textContent  = d.soil !== null ? d.soil + 'C' : '--';
     document.getElementById('vTime').textContent  = d.time;
   });
 }, 15000);
 </script>
-)";
+)~";
   return html + "</body></html>";
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   МАРШРУТЫ WEB SERVER
-   ═══════════════════════════════════════════════════════════════ */
+/* =================================================================
+   МАРШРУТЫ
+   ================================================================= */
 void handleRoot() {
   if (connected) server.send(200, "text/html", pageSensors());
   else           server.send(200, "text/html", pageSetup());
 }
 
-// Captive portal redirect (iOS, Android, Windows)
 void handleCaptive() {
   server.sendHeader("Location", "http://192.168.4.1/", true);
   server.send(302, "text/plain", "");
@@ -368,7 +382,7 @@ void handleScan() {
     String ssid = WiFi.SSID(i);
     ssid.replace("\"", "\\\"");
     json += "{\"ssid\":\"" + ssid + "\","
-            "\"rssi\":" + String(WiFi.RSSI(i)) + ","
+            "\"rssi\":"  + String(WiFi.RSSI(i)) + ","
             "\"secure\":" + (WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false") + "}";
   }
   json += "]";
@@ -386,7 +400,6 @@ void handleConnect() {
   if (lng.length())  stationLng  = lng.toFloat();
   if (name.length()) stationName = name;
 
-  // Сохраняем настройки
   prefs.begin("meteo", false);
   prefs.putString("ssid", ssid);
   prefs.putString("pass", pass);
@@ -395,7 +408,6 @@ void handleConnect() {
   prefs.putString("name", stationName);
   prefs.end();
 
-  // Подключаемся к Wi-Fi
   WiFi.begin(ssid.c_str(), pass.c_str());
   uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(300);
@@ -405,7 +417,8 @@ void handleConnect() {
     server.send(200, "application/json", "{\"ok\":true}");
     Serial.println("WiFi connected: " + WiFi.localIP().toString());
   } else {
-    server.send(200, "application/json", "{\"ok\":false,\"msg\":\"Не удалось подключиться. Проверьте пароль.\"}");
+    server.send(200, "application/json",
+      "{\"ok\":false,\"msg\":\"Cannot connect. Check password.\"}");
   }
 }
 
@@ -416,7 +429,7 @@ void handleSensorApi() {
 
 void handleSend() {
   if (!connected) {
-    server.send(200, "application/json", "{\"ok\":false,\"msg\":\"Нет подключения к интернету\"}");
+    server.send(200, "application/json", "{\"ok\":false,\"msg\":\"No internet\"}");
     return;
   }
   SensorData d = readSensors();
@@ -427,7 +440,7 @@ void handleSend() {
   int code = http.POST(body);
   bool ok = (code > 0);
   if (ok) {
-    lastAutoSend = millis();  // сброс таймера авто-отправки
+    lastAutoSend = millis();
     Serial.println("ManualSend HTTP " + String(code));
   }
   server.send(200, "application/json",
@@ -435,9 +448,9 @@ void handleSend() {
   http.end();
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* =================================================================
    SETUP
-   ═══════════════════════════════════════════════════════════════ */
+   ================================================================= */
 void setup() {
   Serial.begin(115200);
   delay(500);
@@ -448,16 +461,14 @@ void setup() {
   if (rtc.lostPower()) rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   ds.begin();
 
-  // Загружаем сохранённые настройки
   prefs.begin("meteo", true);
   String savedSsid = prefs.getString("ssid", "");
   String savedPass = prefs.getString("pass", "");
   stationLat  = prefs.getFloat("lat",  0.0);
   stationLng  = prefs.getFloat("lng",  0.0);
-  stationName = prefs.getString("name", "Метеостанция");
+  stationName = prefs.getString("name", "Meteostation");
   prefs.end();
 
-  // Пробуем подключиться к сохранённой сети
   if (savedSsid.length()) {
     Serial.println("Connecting to: " + savedSsid);
     WiFi.mode(WIFI_AP_STA);
@@ -470,28 +481,24 @@ void setup() {
     }
   }
 
-  // Запускаем точку доступа (всегда активна для настройки)
   WiFi.softAPConfig(AP_IP, AP_IP, AP_SUBNET);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
   if (!connected) WiFi.mode(WIFI_AP);
   Serial.println("AP IP: " + WiFi.softAPIP().toString());
 
-  // DNS — все запросы → наш IP (captive portal)
   dns.start(53, "*", AP_IP);
 
-  // Маршруты
-  server.on("/",               HTTP_GET,  handleRoot);
-  server.on("/scan",           HTTP_GET,  handleScan);
-  server.on("/connect",        HTTP_POST, handleConnect);
-  server.on("/api/sensors",    HTTP_GET,  handleSensorApi);
-  server.on("/send",           HTTP_POST, handleSend);
+  server.on("/",             HTTP_GET,  handleRoot);
+  server.on("/scan",         HTTP_GET,  handleScan);
+  server.on("/connect",      HTTP_POST, handleConnect);
+  server.on("/api/sensors",  HTTP_GET,  handleSensorApi);
+  server.on("/send",         HTTP_POST, handleSend);
 
-  // Captive portal: стандартные URL от iOS/Android/Windows
-  server.on("/generate_204",          HTTP_GET, handleCaptive);
-  server.on("/hotspot-detect.html",   HTTP_GET, handleCaptive);
-  server.on("/connecttest.txt",       HTTP_GET, handleCaptive);
-  server.on("/ncsi.txt",              HTTP_GET, handleCaptive);
-  server.on("/redirect",              HTTP_GET, handleCaptive);
+  server.on("/generate_204",        HTTP_GET, handleCaptive);
+  server.on("/hotspot-detect.html", HTTP_GET, handleCaptive);
+  server.on("/connecttest.txt",     HTTP_GET, handleCaptive);
+  server.on("/ncsi.txt",            HTTP_GET, handleCaptive);
+  server.on("/redirect",            HTTP_GET, handleCaptive);
   server.onNotFound(handleRoot);
 
   server.begin();
@@ -499,7 +506,9 @@ void setup() {
   Serial.println("READY");
 }
 
-/* ─── вспомогательная функция отправки POST ─── */
+/* =================================================================
+   LOOP
+   ================================================================= */
 bool postToFmis() {
   if (!connected) return false;
   SensorData d = readSensors();
@@ -509,24 +518,19 @@ bool postToFmis() {
   http.addHeader("Content-Type", "application/json");
   int code = http.POST(body);
   http.end();
-  Serial.println("AutoSend HTTP " + String(code) + ": " + body);
+  Serial.println("AutoSend HTTP " + String(code));
   return (code > 0);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   LOOP
-   ═══════════════════════════════════════════════════════════════ */
 void loop() {
   dns.processNextRequest();
   server.handleClient();
 
-  // Авто-отправка каждые 30 минут (только когда подключён к интернету)
   if (connected && (millis() - lastAutoSend >= AUTO_SEND_INTERVAL)) {
     lastAutoSend = millis();
     postToFmis();
   }
 
-  // Serial отладка каждые 5 сек
   static uint32_t t0 = 0;
   if (millis() - t0 > 5000) {
     t0 = millis();
