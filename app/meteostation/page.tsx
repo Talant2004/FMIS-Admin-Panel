@@ -262,27 +262,49 @@ export default function MeteoStationPage() {
           </div>
         )}
 
-        {/* latest processed Raspberry Pi photo */}
-        {latestPhoto?.photoUrl && (
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Camera size={15} className="text-green-600" />
-                <span className="text-sm font-semibold text-foreground">Последнее фото Raspberry Pi</span>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {timeSince(latestPhoto.photoReceivedAt ?? latestPhoto.receivedAt)}
-              </span>
+        {/* Raspberry Pi photo — always visible */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Camera size={15} className="text-green-600" />
+              <span className="text-sm font-semibold text-foreground">Фото с Raspberry Pi</span>
             </div>
-            <a href={latestPhoto.photoUrl} target="_blank" rel="noreferrer" className="block group">
-              <img src={latestPhoto.photoUrl} alt={`Панорама ${latestPhoto.time}`}
-                className="w-full max-h-[420px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity" />
-              <span className="flex items-center justify-center gap-1.5 p-2 text-xs text-green-600">
-                Открыть в полном размере <ExternalLink size={12} />
+            {latestPhoto?.photoReceivedAt && (
+              <span className="text-xs text-muted-foreground">
+                {timeSince(latestPhoto.photoReceivedAt)}
               </span>
-            </a>
+            )}
           </div>
-        )}
+
+          {latestPhoto?.photoUrl ? (
+            <a href={latestPhoto.photoUrl} target="_blank" rel="noreferrer" className="block group">
+              <img
+                src={latestPhoto.photoUrl}
+                alt={`Панорама ${latestPhoto.time}`}
+                className="w-full max-h-[480px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity"
+              />
+              <div className="flex items-center justify-between px-4 py-2 border-t border-border">
+                <span className="text-xs text-muted-foreground font-mono">{latestPhoto.time}</span>
+                <span className="flex items-center gap-1.5 text-xs text-green-600">
+                  Открыть в полном размере <ExternalLink size={12} />
+                </span>
+              </div>
+            </a>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 py-14 text-center px-6">
+              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                <Camera size={28} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Фото ещё не получено</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Raspberry Pi отправляет снимок на{" "}
+                  <code className="text-green-600">POST /api/meteostation/photo</code>
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* chart */}
         {chartData.length > 1 && (
