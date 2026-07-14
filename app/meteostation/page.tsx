@@ -27,6 +27,7 @@ import {
   Minus,
   Camera,
   ExternalLink,
+  ImageOff,
 } from "lucide-react"
 
 function fmt1(n: number | null | undefined) {
@@ -43,6 +44,17 @@ function timeSince(iso: string) {
 
 function shortTime(iso: string) {
   return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+}
+
+function almatyDateTime(iso: string) {
+  return new Date(iso).toLocaleString("ru-RU", {
+    timeZone:   "Asia/Almaty",
+    day:        "2-digit",
+    month:      "2-digit",
+    year:       "numeric",
+    hour:       "2-digit",
+    minute:     "2-digit",
+  })
 }
 
 function trend(readings: MeteoReading[], key: keyof MeteoReading) {
@@ -139,12 +151,23 @@ const CHART_TABS: { id: ChartTab; label: string; color: string; unit: string }[]
   { id: "soil",     label: "Темп. почвы",   color: "#eab308", unit: "°C"  },
 ]
 
+interface RpiPhoto {
+  id:          string
+  url:         string
+  storagePath: string
+  capturedAt:  string
+}
+
 export default function MeteoStationPage() {
   const [readings,    setReadings]    = useState<MeteoReading[]>([])
   const [loading,     setLoading]     = useState(true)
   const [lastFetch,   setLastFetch]   = useState<Date | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [activeChart, setActiveChart] = useState<ChartTab>("temp")
+
+  // Raspberry Pi photos — independent from ESP32 sensor data
+  const [photos,      setPhotos]      = useState<RpiPhoto[]>([])
+  const [photoLoading, setPhotoLoading] = useState(true)
 
   const load = useCallback(async () => {
     try {
@@ -156,12 +179,23 @@ export default function MeteoStationPage() {
     finally  { setLoading(false) }
   }, [])
 
+  const loadPhotos = useCallback(async () => {
+    try {
+      const res  = await fetch("/api/meteostation/photo")
+      const data = await res.json()
+      setPhotos(Array.isArray(data) ? data : [])
+    } catch { /* ignore */ }
+    finally { setPhotoLoading(false) }
+  }, [])
+
   useEffect(() => {
     load()
+    loadPhotos()
     if (!autoRefresh) return
-    const id = setInterval(load, 30_000)
-    return () => clearInterval(id)
-  }, [load, autoRefresh])
+    const id  = setInterval(load, 30_000)
+    const pid = setInterval(loadPhotos, 60_000)   // photos refresh every 60 s
+    return () => { clearInterval(id); clearInterval(pid) }
+  }, [load, loadPhotos, autoRefresh])
 
   const latest = readings[0] ?? null
   const latestPhoto = readings.find(r => r.photoUrl) ?? null
@@ -262,49 +296,80 @@ export default function MeteoStationPage() {
           </div>
         )}
 
-        {/* Raspberry Pi photo — always visible */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Camera size={15} className="text-green-600" />
-              <span className="text-sm font-semibold text-foreground">Фото с Raspberry Pi</span>
+        {/* ── Latest Raspberry Pi photo (large) ── */}
+        {(photoLoading || photos.length > 0) && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Camera size={15} className="text-green-600" />
+                <span className="text-sm font-semibold text-foreground">Последнее фото Raspberry Pi</span>
+              </div>
+              {photos[0] && (
+                <span className="text-xs text-muted-foreground">
+                  {almatyDateTime(photos[0].capturedAt)}
+                </span>
+              )}
             </div>
-            {latestPhoto?.photoReceivedAt && (
-              <span className="text-xs text-muted-foreground">
-                {timeSince(latestPhoto.photoReceivedAt)}
-              </span>
-            )}
-          </div>
 
-          {latestPhoto?.photoUrl ? (
-            <a href={latestPhoto.photoUrl} target="_blank" rel="noreferrer" className="block group">
-              <img
-                src={latestPhoto.photoUrl}
-                alt={`Панорама ${latestPhoto.time}`}
-                className="w-full max-h-[480px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity"
-              />
-              <div className="flex items-center justify-between px-4 py-2 border-t border-border">
-                <span className="text-xs text-muted-foreground font-mono">{latestPhoto.time}</span>
-                <span className="flex items-center gap-1.5 text-xs text-green-600">
+            {photoLoading ? (
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+                Загрузка...
+              </div>
+            ) : photos.length === 0 ? (
+              <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <ImageOff size={28} />
+                <span className="text-sm">Фото ещё не загружены</span>
+              </div>
+            ) : (
+              <a href={photos[0].url} target="_blank" rel="noreferrer" className="block group">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photos[0].url}
+                  alt="Последнее фото с Raspberry Pi"
+                  className="w-full max-h-[480px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity"
+                />
+                <span className="flex items-center justify-center gap-1.5 p-2 text-xs text-green-600">
                   Открыть в полном размере <ExternalLink size={12} />
                 </span>
-              </div>
-            </a>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-3 py-14 text-center px-6">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                <Camera size={28} className="text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">Фото ещё не получено</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Raspberry Pi отправляет снимок на{" "}
-                  <code className="text-green-600">POST /api/meteostation/photo</code>
-                </p>
-              </div>
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* ── Photo history (48 h) ── */}
+        {photos.length > 1 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-sm font-semibold text-foreground">
+                История фото · последние 48 ч.
+              </span>
+              <span className="text-xs text-muted-foreground">{photos.length} снимков</span>
             </div>
-          )}
-        </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-3">
+              {photos.map(p => (
+                <a
+                  key={p.id}
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group relative block rounded-lg overflow-hidden border border-border hover:border-green-500 transition-colors"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.url}
+                    alt={almatyDateTime(p.capturedAt)}
+                    className="w-full h-28 object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1">
+                    <p className="text-white text-[10px] font-medium truncate">
+                      {almatyDateTime(p.capturedAt)}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* chart */}
         {chartData.length > 1 && (
