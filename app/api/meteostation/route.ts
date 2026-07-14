@@ -2,31 +2,30 @@ import { NextResponse } from "next/server"
 import {
   collection,
   addDoc,
+  doc,
   getDocs,
   orderBy,
   query,
   limit,
+  setDoc,
 } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
-
-export interface MeteoReading {
-  temp: number
-  humidity: number
-  pressure: number
-  soil: number | null
-  lat: number
-  lng: number
-  name: string
-  time: string
-  receivedAt: string
-}
+import type { MeteoReading } from "@/lib/meteostation-types"
 
 const COLLECTION = "meteostation"
+const CYCLE_ID_RE = /^[A-Za-z0-9_-]{1,96}$/
 
 /* ── POST: ESP32 отправляет показания ── */
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    const cycleId = String(body.cycleId ?? "")
+    if (cycleId && !CYCLE_ID_RE.test(cycleId)) {
+      return NextResponse.json(
+        { ok: false, error: "invalid cycleId" },
+        { status: 400 },
+      )
+    }
 
     const reading: MeteoReading = {
       temp:       Number(body.temp)     || 0,
@@ -39,13 +38,19 @@ export async function POST(request: Request) {
       name:       String(body.name  || "Meteostation"),
       time:       String(body.time  || new Date().toISOString()),
       receivedAt: new Date().toISOString(),
+      ...(cycleId ? { cycleId } : {}),
+      device: String(body.device || "esp32"),
     }
 
     const db  = getDb()
     const col = collection(db, COLLECTION)
-    await addDoc(col, reading)
+    if (cycleId) {
+      await setDoc(doc(col, cycleId), reading, { merge: true })
+    } else {
+      await addDoc(col, reading)
+    }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, cycleId: cycleId || null })
   } catch (err) {
     console.error("meteostation POST error:", err)
     return NextResponse.json(

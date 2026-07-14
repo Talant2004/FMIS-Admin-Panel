@@ -45,6 +45,9 @@ const char* FMIS_API_URL = "https://fmis-admin-panel.vercel.app/api/meteostation
 const uint32_t AUTO_SEND_INTERVAL = 30UL * 60UL * 1000UL;  // 30 минут
 uint32_t lastAutoSend = 0;
 
+// forward declaration
+bool postToFmis();
+
 /* --- объекты --- */
 Adafruit_BME280   bme;
 RTC_DS3231        rtc;
@@ -416,6 +419,10 @@ void handleConnect() {
     connected = true;
     server.send(200, "application/json", "{\"ok\":true}");
     Serial.println("WiFi connected: " + WiFi.localIP().toString());
+    // Отправить первые данные сразу после подключения
+    delay(500);
+    postToFmis();
+    lastAutoSend = millis();
   } else {
     server.send(200, "application/json",
       "{\"ok\":false,\"msg\":\"Cannot connect. Check password.\"}");
@@ -438,14 +445,14 @@ void handleSend() {
   http.begin(FMIS_API_URL);
   http.addHeader("Content-Type", "application/json");
   int code = http.POST(body);
-  bool ok = (code > 0);
-  if (ok) {
-    lastAutoSend = millis();
-    Serial.println("ManualSend HTTP " + String(code));
-  }
-  server.send(200, "application/json",
-    ok ? "{\"ok\":true}" : "{\"ok\":false,\"msg\":\"HTTP " + String(code) + "\"}");
+  String resp = http.getString();
   http.end();
+  // Успех только если HTTP 200 и тело содержит "ok":true
+  bool ok = (code == 200 && resp.indexOf("\"ok\":true") >= 0);
+  if (ok) lastAutoSend = millis();
+  Serial.println("ManualSend HTTP " + String(code) + " -> " + resp);
+  server.send(200, "application/json",
+    ok ? "{\"ok\":true}" : "{\"ok\":false,\"msg\":\"HTTP " + String(code) + ": " + resp + "\"}");
 }
 
 /* =================================================================
@@ -478,6 +485,8 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
       connected = true;
       Serial.println("Connected: " + WiFi.localIP().toString());
+      postToFmis();         // первая отправка сразу при старте
+      lastAutoSend = millis();
     }
   }
 
@@ -517,9 +526,11 @@ bool postToFmis() {
   http.begin(FMIS_API_URL);
   http.addHeader("Content-Type", "application/json");
   int code = http.POST(body);
+  String resp = http.getString();
   http.end();
-  Serial.println("AutoSend HTTP " + String(code));
-  return (code > 0);
+  bool ok = (code == 200 && resp.indexOf("\"ok\":true") >= 0);
+  Serial.println("AutoSend HTTP " + String(code) + " -> " + resp);
+  return ok;
 }
 
 void loop() {

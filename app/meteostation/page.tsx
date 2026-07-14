@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { Navigation } from "@/components/navigation"
+import type { MeteoReading } from "@/lib/meteostation-types"
 import {
   LineChart,
   Line,
@@ -24,19 +25,9 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Camera,
+  ExternalLink,
 } from "lucide-react"
-
-interface MeteoReading {
-  temp: number
-  humidity: number
-  pressure: number
-  soil: number | null
-  lat: number
-  lng: number
-  name: string
-  time: string
-  receivedAt: string
-}
 
 function fmt1(n: number | null | undefined) {
   if (n === null || n === undefined) return "—"
@@ -125,6 +116,16 @@ function HistoryRow({ r }: { r: MeteoReading }) {
       <td className="py-2 px-3 font-mono text-foreground">{fmt1(r.humidity)}%</td>
       <td className="py-2 px-3 font-mono text-foreground">{fmt1(r.pressure)} гПа</td>
       <td className="py-2 px-3 font-mono text-foreground">{r.soil !== null ? fmt1(r.soil) + "°C" : "—"}</td>
+      <td className="py-2 px-3">
+        {r.photoUrl ? (
+          <a href={r.photoUrl} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-2 text-green-600 hover:underline">
+            <img src={r.photoUrl} alt={`Фото ${r.time}`}
+              className="h-10 w-14 rounded object-cover border border-border" />
+            <ExternalLink size={13} />
+          </a>
+        ) : "—"}
+      </td>
     </tr>
   )
 }
@@ -163,6 +164,7 @@ export default function MeteoStationPage() {
   }, [load, autoRefresh])
 
   const latest = readings[0] ?? null
+  const latestPhoto = readings.find(r => r.photoUrl) ?? null
   const online = latest && (Date.now() - new Date(latest.receivedAt).getTime()) < 5_400_000
 
   const chartData = [...readings]
@@ -257,6 +259,28 @@ export default function MeteoStationPage() {
               value={latest.soil !== null ? fmt1(latest.soil) : "—"}
               unit={latest.soil !== null ? "°C" : ""} accent="bg-yellow-500"
               trendDir={latest.soil !== null ? trend(readings, "soil") : null} />
+          </div>
+        )}
+
+        {/* latest processed Raspberry Pi photo */}
+        {latestPhoto?.photoUrl && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Camera size={15} className="text-green-600" />
+                <span className="text-sm font-semibold text-foreground">Последнее фото Raspberry Pi</span>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {timeSince(latestPhoto.photoReceivedAt ?? latestPhoto.receivedAt)}
+              </span>
+            </div>
+            <a href={latestPhoto.photoUrl} target="_blank" rel="noreferrer" className="block group">
+              <img src={latestPhoto.photoUrl} alt={`Панорама ${latestPhoto.time}`}
+                className="w-full max-h-[420px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity" />
+              <span className="flex items-center justify-center gap-1.5 p-2 text-xs text-green-600">
+                Открыть в полном размере <ExternalLink size={12} />
+              </span>
+            </a>
           </div>
         )}
 
@@ -369,6 +393,7 @@ export default function MeteoStationPage() {
                     <th className="py-2 px-3 text-left font-medium">Влажн.</th>
                     <th className="py-2 px-3 text-left font-medium">Давл.</th>
                     <th className="py-2 px-3 text-left font-medium">Почва</th>
+                    <th className="py-2 px-3 text-left font-medium">Фото</th>
                   </tr>
                 </thead>
                 <tbody>
