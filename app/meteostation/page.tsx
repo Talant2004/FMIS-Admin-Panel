@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useState, useCallback } from "react"
 import { Navigation } from "@/components/navigation"
@@ -297,7 +297,7 @@ export default function MeteoStationPage() {
         )}
 
         {/* ── Latest Raspberry Pi photo (large) ── */}
-        {(photoLoading || photos.length > 0) && (
+        {photos.length > 0 && (
           <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -311,28 +311,17 @@ export default function MeteoStationPage() {
               )}
             </div>
 
-            {photoLoading ? (
-              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
-                Загрузка...
-              </div>
-            ) : photos.length === 0 ? (
-              <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <ImageOff size={28} />
-                <span className="text-sm">Фото ещё не загружены</span>
-              </div>
-            ) : (
-              <a href={photos[0].url} target="_blank" rel="noreferrer" className="block group">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photos[0].url}
-                  alt="Последнее фото с Raspberry Pi"
-                  className="w-full max-h-[480px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity"
-                />
-                <span className="flex items-center justify-center gap-1.5 p-2 text-xs text-green-600">
-                  Открыть в полном размере <ExternalLink size={12} />
-                </span>
-              </a>
-            )}
+            <a href={photos[0].url} target="_blank" rel="noreferrer" className="block group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photos[0].url}
+                alt="Последнее фото с Raspberry Pi"
+                className="w-full max-h-[480px] object-contain bg-black/5 group-hover:opacity-95 transition-opacity"
+              />
+              <span className="flex items-center justify-center gap-1.5 p-2 text-xs text-green-600">
+                Открыть в полном размере <ExternalLink size={12} />
+              </span>
+            </a>
           </div>
         )}
 
