@@ -9,7 +9,6 @@ import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { ProbeDetailCard } from "@/components/journal/probe-detail-card"
 import { getJournalUsers } from "@/lib/firestore-journal"
 import {
@@ -27,85 +26,6 @@ const JournalMap = dynamic(
   () => import("@/components/journal-map").then((mod) => mod.JournalMap),
   { ssr: false }
 )
-
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border bg-card px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold">{value}</div>
-    </div>
-  )
-}
-
-const HIDDEN_TABLE_FIELDS = new Set([
-  "comment",
-  "countingMethod",
-  "createdAt",
-  "crop",
-  "cropStage",
-  "developmentSampleValues1",
-  "developmentSampleValues2",
-  "developmentSampleValues3",
-  "disease1",
-  "disease2",
-  "disease3",
-  "diseaseCategory1",
-  "diseaseCategory2",
-  "diseaseCategory3",
-  "diseaseDevelopment1",
-  "diseaseDevelopment2",
-  "diseaseDevelopment3",
-  "experimentId",
-  "farmingName",
-  "fieldArea",
-  "fullName",
-  "id",
-  "inputType1",
-  "inputType2",
-  "inputType3",
-  "lat",
-  "lng",
-  "monitoringType",
-  "pest",
-  "pestAverage",
-  "pestStage",
-  "photoPaths",
-  "photoUrls",
-  "plantsPerSample",
-  "prevalencePercentage1",
-  "prevalencePercentage2",
-  "prevalencePercentage3",
-  "prevalenceSampleValues1",
-  "prevalenceSampleValues2",
-  "prevalenceSampleValues3",
-  "researchDiscipline",
-  "rowCoordinates",
-  "sampleValues",
-  "threshold",
-  "thresholdExceeded",
-  "userEmail",
-  "userId",
-  "variety",
-  "weatherConditions",
-  "weed1",
-  "weed2",
-  "weed3",
-  "weed1SampleValues",
-  "weed2SampleValues",
-  "weed3SampleValues",
-  "weedCategory1",
-  "weedCategory2",
-  "weedCategory3",
-  "weedInfection1",
-  "weedInfection2",
-  "weedInfection3",
-  "weedPrevalence1",
-  "weedPrevalence2",
-  "weedPrevalence3",
-  "weedStage1",
-  "weedStage2",
-  "weedStage3",
-])
 
 function JournalPageContent() {
   const { user } = useAuth()
@@ -242,16 +162,8 @@ function JournalPageContent() {
     })
   }, [samples, searchQuery, usersById])
 
-  const selectedSample = filteredSamples.find((sample) => sample.id === selectedId) ?? null
-  const allFieldKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const sample of filteredSamples) {
-      Object.keys(sample.fields).forEach((key) => {
-        if (!HIDDEN_TABLE_FIELDS.has(key)) keys.add(key)
-      })
-    }
-    return Array.from(keys).sort((a, b) => a.localeCompare(b, "ru"))
-  }, [filteredSamples])
+  const selectedSample =
+    filteredSamples.find((sample) => sample.id === selectedId) ?? filteredSamples[0] ?? null
 
   const uniquePests = useMemo(() => {
     return new Set(
@@ -280,74 +192,105 @@ function JournalPageContent() {
   }, [samples])
 
   return (
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="space-y-4 p-4 md:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold">Полевой журнал</h1>
+            <h1 className="text-2xl font-semibold">Полевой журнал</h1>
             <p className="text-sm text-muted-foreground">
-              Firestore · samples · по {JOURNAL_PAGE_SIZE} записей (курсорная пагинация)
+              Записи полевых осмотров инспекторов
+              {!isLoading && samples.length > 0 && ` · ${samples.length} записей загружено`}
             </p>
           </div>
 
-          <div className="flex rounded-lg border bg-card p-1">
-            {(["list", "map"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                  viewMode === mode ? "bg-foreground text-background" : "hover:bg-muted"
-                }`}
-              >
-                {mode === "list" ? "Данные" : "Карта"}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            {hasMore && (
+              <Button type="button" variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? "Загрузка…" : `Загрузить ещё`}
+              </Button>
+            )}
+            <div className="flex rounded-lg border bg-card p-1">
+              {(["list", "map"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    viewMode === mode ? "bg-foreground text-background" : "hover:bg-muted"
+                  }`}
+                >
+                  {mode === "list" ? "Таблица" : "Карта"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {loadError && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            <div>Ошибка Firestore: {loadError}</div>
+            <div>Ошибка: {loadError}</div>
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Загружено записей" value={isLoading ? "…" : samples.length} />
-          <StatCard label="Инспекторов" value={isLoading ? "…" : users.length} />
-          <StatCard label="Объектов мониторинга" value={isLoading ? "…" : uniquePests} />
-          <StatCard label="Высокий риск" value={isLoading ? "…" : highRiskCount} />
-          <StatCard label="С координатами" value={isLoading ? "…" : withCoordinatesCount} />
+          <div className="rounded-lg border bg-card px-4 py-3">
+            <div className="text-xs text-muted-foreground">Всего записей</div>
+            <div className="mt-1 text-2xl font-semibold">{isLoading ? "…" : samples.length}</div>
+            {!isLoading && withPhotoCount > 0 && (
+              <div className="mt-1 text-xs text-muted-foreground">с фото: {withPhotoCount}</div>
+            )}
+          </div>
+          <div className="rounded-lg border bg-card px-4 py-3">
+            <div className="text-xs text-muted-foreground">Инспекторов</div>
+            <div className="mt-1 text-2xl font-semibold">{isLoading ? "…" : users.length}</div>
+          </div>
+          <div className="rounded-lg border bg-card px-4 py-3">
+            <div className="text-xs text-muted-foreground">Объектов мониторинга</div>
+            <div className="mt-1 text-2xl font-semibold">{isLoading ? "…" : uniquePests}</div>
+          </div>
+          <div className={`rounded-lg border px-4 py-3 ${!isLoading && highRiskCount > 0 ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900" : "bg-card"}`}>
+            <div className={`text-xs ${!isLoading && highRiskCount > 0 ? "text-red-700 dark:text-red-400" : "text-muted-foreground"}`}>
+              Высокий риск
+            </div>
+            <div className={`mt-1 text-2xl font-semibold ${!isLoading && highRiskCount > 0 ? "text-red-700 dark:text-red-400" : ""}`}>
+              {isLoading ? "…" : highRiskCount}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-card px-4 py-3">
+            <div className="text-xs text-muted-foreground">С координатами</div>
+            <div className="mt-1 text-2xl font-semibold">{isLoading ? "…" : withCoordinatesCount}</div>
+            {!isLoading && samples.length > 0 && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {Math.round((withCoordinatesCount / samples.length) * 100)}% от всех
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Поиск по загруженным записям..."
-            className="max-w-md"
+            placeholder="Поиск по вредителю, культуре, инспектору…"
+            className="max-w-sm"
           />
           <select
             value={monitoringFilter}
             onChange={(e) => setMonitoringFilter(e.target.value)}
             className="rounded-md border bg-background px-2 py-1.5 text-sm"
           >
-            <option value="">Все типы</option>
+            <option value="">Все типы осмотра</option>
             <option value="entomology">Энтомология</option>
             <option value="phytopathology">Фитопатология</option>
             <option value="herbology">Гербология</option>
           </select>
-          <Badge variant="outline">С фото: {withPhotoCount}</Badge>
-          <Badge variant="outline">Показано: {filteredSamples.length}</Badge>
-          {hasMore ? (
-            <Button type="button" variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
-              {loadingMore ? "Загрузка…" : `Ещё ${JOURNAL_PAGE_SIZE}`}
-            </Button>
-          ) : null}
+          {filteredSamples.length !== samples.length && (
+            <Badge variant="outline">Показано: {filteredSamples.length}</Badge>
+          )}
         </div>
 
         {viewMode === "map" ? (
-          <div className="grid h-[calc(100vh-280px)] min-h-[420px] grid-cols-[1.4fr_1fr] overflow-hidden rounded-lg border">
-            <div className="h-full">
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
+            <div className="h-[440px] overflow-hidden rounded-lg border md:h-[560px]">
               {withCoordinatesCount === 0 && !isLoading ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   Нет записей с координатами для отображения на карте
@@ -361,30 +304,28 @@ function JournalPageContent() {
                 />
               )}
             </div>
-            <div className="border-l">
-              <div className="border-b px-3 py-2 text-sm font-medium">Записи на карте</div>
-              <ScrollArea className="h-[calc(100%-41px)]">
-                <div className="space-y-2 p-3">
-                  {filteredSamples.map((sample) => (
-                    <Button
-                      key={sample.id}
-                      variant={selectedId === sample.id ? "default" : "outline"}
-                      className="h-auto w-full flex-col items-start gap-1 py-2 text-left"
-                      onClick={() => setSelectedId(sample.id)}
-                    >
-                      <span className="font-medium">{sample.pest ?? "Без названия"}</span>
-                      <span className="text-xs opacity-80">{formatSampleDate(sample.createdAt)}</span>
-                      <span className="text-xs opacity-80">{inspectorLabel(sample)}</span>
-                    </Button>
-                  ))}
-                </div>
-              </ScrollArea>
+            <div className="overflow-hidden rounded-lg border bg-card">
+              <div className="border-b px-4 py-3 text-sm font-semibold">Записи на карте</div>
+              <div className="space-y-2 p-3">
+                {filteredSamples.map((sample) => (
+                  <Button
+                    key={sample.id}
+                    variant={selectedId === sample.id ? "default" : "outline"}
+                    className="h-auto w-full flex-col items-start gap-1 py-2 text-left"
+                    onClick={() => setSelectedId(sample.id)}
+                  >
+                    <span className="font-medium">{sample.pest ?? "Без названия"}</span>
+                    <span className="text-xs opacity-80">{formatSampleDate(sample.createdAt)}</span>
+                    <span className="text-xs opacity-80">{inspectorLabel(sample)}</span>
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
-          <div className="grid h-[calc(100vh-280px)] min-h-[420px] grid-cols-[1.5fr_1fr] overflow-hidden rounded-lg border">
-            <div className="overflow-auto">
-              <table className="min-w-max border-collapse text-xs">
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,1fr)]">
+            <div className="overflow-x-auto rounded-lg border bg-card">
+              <table className="w-full min-w-[980px] border-collapse text-xs">
                 <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                   <tr>
                     <th className="border px-2 py-1 text-left">Дата</th>
@@ -396,23 +337,18 @@ function JournalPageContent() {
                     <th className="border px-2 py-1 text-left">Риск</th>
                     <th className="border px-2 py-1 text-left">Координаты</th>
                     <th className="border px-2 py-1 text-left">Фото</th>
-                    {allFieldKeys.map((key) => (
-                      <th key={key} className="border px-2 py-1 text-left">
-                        {key}
-                      </th>
-                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={9 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9} className="border px-3 py-6 text-center text-muted-foreground">
                         Загрузка данных полевого журнала...
                       </td>
                     </tr>
                   ) : filteredSamples.length === 0 ? (
                     <tr>
-                      <td colSpan={9 + allFieldKeys.length} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9} className="border px-3 py-6 text-center text-muted-foreground">
                         Записи не найдены
                       </td>
                     </tr>
@@ -474,11 +410,6 @@ function JournalPageContent() {
                             "—"
                           )}
                         </td>
-                        {allFieldKeys.map((key) => (
-                          <td key={`${sample.id}-${key}`} className="border px-2 py-1 max-w-[220px] truncate">
-                            {sample.fields[key] ?? "—"}
-                          </td>
-                        ))}
                       </tr>
                     ))
                   )}
@@ -486,54 +417,107 @@ function JournalPageContent() {
               </table>
             </div>
 
-            <div className="border-l">
-              <div className="border-b px-3 py-2 text-sm font-medium">Детали записи</div>
-              <ScrollArea className="h-[calc(100%-41px)]">
+            <aside className="overflow-hidden rounded-lg border bg-card xl:sticky xl:top-4">
+              <div className="border-b px-4 py-3 text-sm font-semibold">Детали записи</div>
                 {selectedSample ? (
-                  <div className="space-y-3 p-3 text-sm">
+                  <div className="p-3 text-sm space-y-4">
                     <ProbeDetailCard sample={selectedSample} />
-                    <div>
-                      <div className="text-xs text-muted-foreground">ID записи</div>
-                      <div className="font-medium">{selectedSample.id}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Инспектор</div>
-                      <div>{inspectorLabel(selectedSample)}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-muted-foreground">Дата</div>
-                      <div>{formatSampleDate(selectedSample.createdAt)}</div>
-                    </div>
-                    {selectedSample.photoUrl && (
-                      <div>
-                        <div className="mb-1 text-xs text-muted-foreground">Фото</div>
-                        <a
-                          href={selectedSample.photoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-green-700 underline underline-offset-4"
-                        >
-                          Открыть фото
-                        </a>
+
+                    {/* Key info block */}
+                    <div className="rounded-lg border bg-muted/30 divide-y divide-border">
+                      <div className="flex justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Инспектор</span>
+                        <span className="text-xs font-medium text-right">{inspectorLabel(selectedSample)}</span>
                       </div>
-                    )}
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-muted-foreground">Все поля Firestore</div>
-                      {Object.entries(selectedSample.fields).map(([key, value]) => (
-                        <div key={key} className="rounded-md border px-2 py-1.5">
-                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{key}</div>
-                          <div className="mt-0.5 break-words whitespace-pre-wrap">{value || "—"}</div>
+                      <div className="flex justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Дата</span>
+                        <span className="text-xs font-medium">{formatSampleDate(selectedSample.createdAt)}</span>
+                      </div>
+                      {selectedSample.pest && (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-xs text-muted-foreground">Объект учёта</span>
+                          <span className="text-xs font-medium text-right max-w-[160px]">{selectedSample.pest}</span>
                         </div>
-                      ))}
+                      )}
+                      {selectedSample.crop && (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-xs text-muted-foreground">Культура</span>
+                          <span className="text-xs font-medium">{selectedSample.crop}</span>
+                        </div>
+                      )}
+                      {selectedSample.damageLevel && (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-xs text-muted-foreground">Поражение</span>
+                          <span className={`text-xs font-medium rounded px-1.5 py-0.5 ${damageBadgeClass(selectedSample.damageLevel)}`}>
+                            {selectedSample.damageLevel}
+                          </span>
+                        </div>
+                      )}
+                      {selectedSample.maxRiskLevel && (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-xs text-muted-foreground">Риск</span>
+                          <span className={`text-xs font-medium rounded px-1.5 py-0.5 ${
+                            selectedSample.maxRiskLevel === "high"
+                              ? "bg-red-100 text-red-700"
+                              : selectedSample.maxRiskLevel === "medium"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {selectedSample.maxRiskLevel === "high" ? "Высокий" : selectedSample.maxRiskLevel === "medium" ? "Наблюдать" : "Низкий"}
+                          </span>
+                        </div>
+                      )}
+                      {selectedSample.latitude !== undefined && selectedSample.longitude !== undefined && (
+                        <div className="flex justify-between px-3 py-2">
+                          <span className="text-xs text-muted-foreground">GPS</span>
+                          <a
+                            href={`https://www.google.com/maps?q=${selectedSample.latitude},${selectedSample.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-green-700 underline underline-offset-2"
+                          >
+                            {selectedSample.latitude.toFixed(5)}, {selectedSample.longitude.toFixed(5)}
+                          </a>
+                        </div>
+                      )}
                     </div>
+
+                    {selectedSample.photoUrl && (
+                      <a
+                        href={selectedSample.photoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800 hover:bg-green-100 dark:border-green-900 dark:bg-green-950/30 dark:text-green-400"
+                      >
+                        📷 Открыть фото
+                      </a>
+                    )}
+
+                    {/* Extra fields — collapsed */}
+                    {Object.keys(selectedSample.fields).length > 0 && (
+                      <details className="group">
+                        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none">
+                          Все поля ({Object.keys(selectedSample.fields).length}) ▸
+                        </summary>
+                        <div className="mt-2 space-y-1">
+                          {Object.entries(selectedSample.fields).map(([key, value]) => (
+                            <div key={key} className="rounded border px-2 py-1.5">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{key}</div>
+                              <div className="mt-0.5 break-words whitespace-pre-wrap text-xs">{value || "—"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
+                    <div className="text-[10px] text-muted-foreground/60">ID: {selectedSample.id}</div>
                   </div>
                 ) : (
                   <div className="p-4 text-sm text-muted-foreground">
                     {isLoading ? "Загрузка..." : "Выберите запись в таблице"}
                   </div>
                 )}
-              </ScrollArea>
-            </div>
+            </aside>
           </div>
         )}
       </div>

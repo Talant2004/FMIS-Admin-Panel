@@ -20,7 +20,8 @@ export function IfnGauge({ ifn, loading }: { ifn: IfnResult; loading: boolean })
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="text-sm font-medium text-muted-foreground">Индекс фитосанитарного напряжения (ИФН)</h2>
+      <h2 className="font-semibold">Фитосанитарное напряжение (ИФН)</h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">Сводная оценка угрозы по всем вредителям и болезням</p>
       <div className="mt-4 flex flex-col items-center">
         <svg viewBox="0 0 200 110" className="h-28 w-full max-w-[220px]">
           <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e5e7eb" strokeWidth="14" />

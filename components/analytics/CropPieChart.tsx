@@ -31,7 +31,8 @@ export function CropPieChart({ data, loading }: CropPieChartProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="mb-4 text-sm font-medium text-muted-foreground">По культурам</h2>
+      <h2 className="mb-1 font-semibold">Распределение по культурам</h2>
+      <p className="mb-4 text-xs text-muted-foreground">Доля записей журнала по каждой культуре</p>
       {loading ? (
         <div className="mx-auto h-[240px] w-[240px] animate-pulse rounded-full bg-muted" />
       ) : data.length === 0 ? (

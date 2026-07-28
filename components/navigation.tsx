@@ -5,9 +5,6 @@ import { usePathname } from "next/navigation"
 import { UserMenu } from "@/components/auth/user-menu"
 import { cn } from "@/lib/utils"
 import {
-  LayoutDashboard,
-  Building2,
-  Map,
   BookOpen,
   Users,
   CloudSun,
@@ -18,9 +15,6 @@ import {
 } from "lucide-react"
 
 const navItems = [
-  { label: "Дашборд", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Предприятия", href: "/", icon: Building2 },
-  { label: "Карта", href: "/map", icon: Map },
   { label: "Журнал", href: "/journal", icon: BookOpen },
   { label: "Инспекторы", href: "/inspectors", icon: Users },
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
@@ -36,7 +30,7 @@ export function Navigation() {
     <nav className="border-b border-border bg-background">
       <div className="flex items-center gap-0 px-3 py-0">
         {/* logo */}
-        <Link href="/dashboard" className="mr-4 flex items-center gap-2 py-3 pr-4 border-r border-border shrink-0">
+        <Link href="/journal" className="mr-4 flex items-center gap-2 py-3 pr-4 border-r border-border shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-green-600 text-white">
             <Wheat size={14} />
           </div>

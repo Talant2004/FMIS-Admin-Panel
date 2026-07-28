@@ -51,6 +51,15 @@ import type { SoilIndicators } from "@/lib/soil/soilgrids"
 import type { Enterprise } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+function SectionHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="mb-4 border-l-4 border-primary pl-3">
+      <h2 className="font-semibold text-base">{title}</h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+    </div>
+  )
+}
+
 function AnalyticsPageContent() {
   const { user } = useAuth()
   const [mode, setMode] = useState<"overview" | "detailed">("overview")
@@ -219,124 +228,148 @@ function AnalyticsPageContent() {
   }, [setCentroid, dateRange, vegStart, farmFilter, cropFilter])
 
   return (
-      <div className="mx-auto max-w-7xl p-4 md:p-6">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">Аналитика</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Полевой журнал + daily_summaries (если есть)
-              {!loading && samples.length > 0 && ` · выборка ${samples.length} проб`}
-              {useSummaries && !loading && " · график из сводок"}
-            </p>
-          </div>
+    <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-8">
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex overflow-hidden rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setMode("overview")}
-                className={cn(
-                  "px-4 py-2 text-sm transition-colors",
-                  mode === "overview"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background hover:bg-muted"
-                )}
-              >
-                Обзор
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("detailed")}
-                className={cn(
-                  "px-4 py-2 text-sm transition-colors",
-                  mode === "detailed"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background hover:bg-muted"
-                )}
-              >
-                Детально
-              </button>
-            </div>
+      {/* ── Шапка ── */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Аналитика</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {loading
+              ? "Загрузка данных…"
+              : samples.length > 0
+              ? `${samples.length} записей полевого журнала`
+              : "Нет данных за выбранный период"}
+          </p>
+        </div>
 
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(Number(e.target.value))}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Period */}
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(Number(e.target.value))}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value={7}>Последние 7 дней</option>
+            <option value={30}>Последние 30 дней</option>
+            <option value={90}>Последние 90 дней</option>
+            <option value={365}>За год</option>
+          </select>
+
+          {/* Overview / Detailed */}
+          <div className="flex overflow-hidden rounded-lg border border-border">
+            <button
+              type="button"
+              onClick={() => setMode("overview")}
+              className={cn(
+                "px-4 py-2 text-sm transition-colors",
+                mode === "overview" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+              )}
             >
-              <option value={7}>7 дней</option>
-              <option value={30}>30 дней</option>
-              <option value={90}>90 дней</option>
-              <option value={365}>Год</option>
-            </select>
-
-            <ExportButton samples={samples} dateRange={dateRange} />
+              Обзор
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("detailed")}
+              className={cn(
+                "px-4 py-2 text-sm transition-colors",
+                mode === "detailed" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted"
+              )}
+            >
+              Детально
+            </button>
           </div>
+
+          <ExportButton samples={samples} dateRange={dateRange} />
         </div>
+      </div>
 
-        <div className="mb-4 flex flex-wrap gap-2">
-          <select
-            value={farmFilter}
-            onChange={(e) => setFarmFilter(e.target.value)}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Все хозяйства (СЭТ)</option>
-            {farms.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-          <select
-            value={cropFilter}
-            onChange={(e) => setCropFilter(e.target.value)}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Все культуры (СЭТ)</option>
-            {crops.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          {!loading && filteredSetSamples.length > 0 ? (
-            <span className="self-center text-xs text-muted-foreground">
-              СЭТ: {filteredSetSamples.length} проб · вегетация с{" "}
-              {vegStart.toLocaleDateString("ru-RU")}
-            </span>
-          ) : null}
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
+      {/* ── Секция 1: Общие показатели ── */}
+      <section>
+        <SectionHeader
+          title="Общие показатели"
+          description="Сколько записей собрано, какие угрозы зафиксированы и как активны инспекторы"
+        />
         <StatsRow summary={summary} loading={loading} />
+      </section>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+      {/* ── Секция 2: Фитосанитарные индексы ── */}
+      <section>
+        <SectionHeader
+          title="Фитосанитарные индексы"
+          description="Оценка напряжённости и накопленного тепла — ключевые показатели для прогноза развития вредителей"
+        />
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <IfnGauge ifn={ifn} loading={loading} />
-          <SetSummaryCard
-            archive={archiveWeatherForSet}
-            loading={vegWeatherLoading || loading}
-            vegStartLabel={vegStart.toLocaleDateString("ru-RU")}
-            contextLabel={setContextLabel}
-          />
+          <div className="space-y-3">
+            {/* SET filter */}
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={farmFilter}
+                onChange={(e) => setFarmFilter(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+              >
+                <option value="">Все хозяйства</option>
+                {farms.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <select
+                value={cropFilter}
+                onChange={(e) => setCropFilter(e.target.value)}
+                className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
+              >
+                <option value="">Все культуры</option>
+                {crops.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <SetSummaryCard
+              archive={archiveWeatherForSet}
+              loading={vegWeatherLoading || loading}
+              vegStartLabel={vegStart.toLocaleDateString("ru-RU")}
+              contextLabel={setContextLabel}
+            />
+          </div>
         </div>
+      </section>
 
-        <div className="mt-6">
-          <QcSummaryCard qc={qc} loading={loading} />
-        </div>
+      {/* ── Секция 3: Контроль качества ── */}
+      <section>
+        <SectionHeader
+          title="Дисциплина инспекторов"
+          description="Процент осмотров вне рабочего времени и за пределами границ полей"
+        />
+        <QcSummaryCard qc={qc} loading={loading} />
+      </section>
 
-        <div className="mt-6">
-          <WeatherThreatChart
-            archive={archiveForChart}
-            threats={phytoThreats}
-            loading={loading || weatherLoading}
-          />
-        </div>
+      {/* ── Секция 4: Погода и угрозы ── */}
+      <section>
+        <SectionHeader
+          title="Погода и болезни"
+          description="Как осадки и температура соотносятся с распространённостью фитопатологий в журнале"
+        />
+        <WeatherThreatChart
+          archive={archiveForChart}
+          threats={phytoThreats}
+          loading={loading || weatherLoading}
+        />
+      </section>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* ── Секция 5: Временна́я динамика + почва ── */}
+      <section>
+        <SectionHeader
+          title="Динамика и структура"
+          description="Как менялась активность осмотров, температура и осадки — и какие культуры охвачены"
+        />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-6">
             <DamageTimelineChart
               data={timeline}
@@ -368,25 +401,44 @@ function AnalyticsPageContent() {
             <CropPieChart data={cropShare} loading={loading} />
           </div>
         </div>
+      </section>
 
-        <div className="mt-6">
-          <PestBarChart data={topPests} loading={loading} />
-        </div>
+      {/* ── Секция 6: Топ вредителей ── */}
+      <section>
+        <SectionHeader
+          title="Вредители и болезни"
+          description="Самые распространённые объекты мониторинга за выбранный период"
+        />
+        <PestBarChart data={topPests} loading={loading} />
+      </section>
 
-        {mode === "detailed" && (
-          <>
-            <div className="mt-6">
-              <YearEpvHeatmap rows={yearHeat} loading={loading} />
-            </div>
-            <div className="mt-6">
-              <RegionHeatTable samples={samples} loading={loading} />
-            </div>
-            <div className="mt-6">
-              <InspectorStatsTable data={inspectorStats} loading={loading} />
-            </div>
-          </>
-        )}
-      </div>
+      {/* ── Детальные таблицы (только в режиме "Детально") ── */}
+      {mode === "detailed" && (
+        <>
+          <section>
+            <SectionHeader
+              title="Тепловая карта ЭПВ по годам"
+              description="Превышения экономических порогов вредоносности по месяцам"
+            />
+            <YearEpvHeatmap rows={yearHeat} loading={loading} />
+          </section>
+          <section>
+            <SectionHeader
+              title="Карта угроз по регионам"
+              description="Распределение вредителей по географическим зонам"
+            />
+            <RegionHeatTable samples={samples} loading={loading} />
+          </section>
+          <section>
+            <SectionHeader
+              title="Статистика по инспекторам"
+              description="Количество осмотров, охваченные культуры и уровень урона"
+            />
+            <InspectorStatsTable data={inspectorStats} loading={loading} />
+          </section>
+        </>
+      )}
+    </div>
   )
 }
 

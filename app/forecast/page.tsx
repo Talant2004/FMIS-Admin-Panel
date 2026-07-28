@@ -210,99 +210,79 @@ function ForecastPageContent() {
   const showForecast = Boolean(selectedField) && !fieldsLoading && fields.length > 0
 
   return (
-      <div className="mx-auto min-h-[calc(100vh-50px)] max-w-md bg-background pb-24">
-        <div className="px-4 pt-4 pb-2">
-          <h1 className="mb-3 text-lg font-semibold">Прогноз для поля</h1>
-          <p className="mb-3 text-xs text-muted-foreground">
-            Только точки из полевого журнала
-            {!fieldsLoading && fields.length > 0 ? ` · ${fields.length}` : ""}
-            {user?.email ? ` · ${user.email}` : ""}
-            {isAdmin ? " · админ" : ""}
+    <div className="mx-auto max-w-7xl p-4 md:p-6">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Прогноз вредителей</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {fieldsLoading
+              ? "Загрузка данных из журнала…"
+              : fields.length > 0
+              ? `${fields.length} полей из журнала · прогноз на 7 дней`
+              : "Нет данных"}
+            {isAdmin && !fieldsLoading && (
+              <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                Администратор
+              </span>
+            )}
           </p>
-          {!isAdmin && !fieldsLoading ? (
-            <p className="mb-3 text-xs text-muted-foreground">
-              Видны только ваши точки.{" "}
-              <Link href="/settings" className="font-medium text-primary underline-offset-2 hover:underline">
-                Как войти как администратор
-              </Link>
-            </p>
-          ) : null}
+        </div>
+        <div className="w-full sm:w-auto min-w-[220px]">
           <FieldSelector
             fields={fields}
             selectedField={selectedField}
             onSelect={setSelectedField}
           />
         </div>
+      </div>
 
-        {fieldsLoading ? (
-          <div className="mx-4 h-24 animate-pulse rounded-xl bg-muted" aria-label="Загрузка точек" />
-        ) : fieldsError ? (
-          <div className="mx-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{fieldsError}</div>
-        ) : fields.length === 0 ? (
-          <div className="mx-4 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            {journalStats.total === 0 ? (
-              <>
-                <p className="mb-2">Записей в журнале не найдено (или нет доступа).</p>
-                <p>
-                  Добавьте осмотры в мобильном приложении или проверьте вход.{" "}
-                  <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
-                    Полевой журнал
-                  </Link>
-                </p>
-              </>
-            ) : journalStats.withCoords === 0 ? (
-              <>
-                <p className="mb-2">
-                  Загружено записей: {journalStats.total}, но у всех нет GPS в Firebase.
-                </p>
-                <p>
-                  При осмотре в приложении включите геолокацию — прогнозу нужны latitude/longitude (или
-                  поле location).
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="mb-2">
-                  Записей с координатами: {journalStats.withCoords} из {journalStats.total}, но они не
-                  попали в список полей.
-                </p>
-                <p>
-                  Откройте{" "}
-                  <Link href="/journal" className="font-medium text-primary underline-offset-2 hover:underline">
-                    журнал
-                  </Link>{" "}
-                  и проверьте колонки широты/долготы.
-                </p>
-              </>
-            )}
-          </div>
-        ) : null}
+      {/* Errors / empty states */}
+      {fieldsLoading ? (
+        <div className="h-24 animate-pulse rounded-xl bg-muted" />
+      ) : fieldsError ? (
+        <div className="rounded-xl bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950/20 dark:text-red-400">{fieldsError}</div>
+      ) : fields.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+          {journalStats.total === 0 ? (
+            <>
+              <p className="mb-2 font-medium">Записей в журнале не найдено</p>
+              <p className="text-xs">
+                Добавьте осмотры в мобильном приложении или{" "}
+                <Link href="/journal" className="text-primary underline-offset-2 hover:underline">
+                  проверьте доступ к журналу
+                </Link>
+              </p>
+            </>
+          ) : journalStats.withCoords === 0 ? (
+            <>
+              <p className="mb-2 font-medium">Записей: {journalStats.total}, но нет GPS-координат</p>
+              <p className="text-xs">При осмотре в приложении включите геолокацию</p>
+            </>
+          ) : (
+            <>
+              <p className="mb-2 font-medium">Координаты есть ({journalStats.withCoords}), но поля не сформировались</p>
+              <p className="text-xs">
+                <Link href="/journal" className="text-primary underline-offset-2 hover:underline">
+                  Откройте журнал
+                </Link>{" "}
+                и проверьте записи
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
 
-        {showForecast && selectedField && (
-          <section className="px-4 py-3">
-            <p className="mb-2 text-sm font-medium text-muted-foreground">История по календарю</p>
-            <JournalHistoryCalendar samples={fieldSamples} />
-          </section>
-        )}
-
-        {showForecast && predictiveAlerts.length > 0 && (
-          <section className="px-4 py-2">
-            <PredictiveAlerts alerts={predictiveAlerts} />
-          </section>
-        )}
-
-        {showForecast && selectedField && (
-          <section className="px-4 py-2">
-            <SprayWindowCard lat={selectedField.lat} lng={selectedField.lng} />
-          </section>
-        )}
-
-        {showForecast && (
-          <div className="px-4">
+      {/* Main forecast layout — two columns on desktop */}
+      {showForecast && selectedField && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+          {/* Left column */}
+          <div className="space-y-4 min-w-0">
+            {/* Alert banner */}
             {forecastLoading ? (
-              <div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Загрузка прогноза" />
+              <div className="h-28 animate-pulse rounded-xl bg-muted" />
             ) : forecastError ? (
-              <div className="rounded-xl bg-red-50 p-6 text-base text-red-800">{forecastError}</div>
+              <div className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{forecastError}</div>
             ) : (
               <AlertBanner
                 level={overallLevel}
@@ -311,33 +291,59 @@ function ForecastPageContent() {
                 onActionClick={overallLevel === "danger" ? scrollToActions : undefined}
               />
             )}
+
+            {/* 7-day weather strip */}
+            {!forecastLoading && !forecastError && weather.length > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-medium text-muted-foreground">Прогноз погоды на 7 дней</p>
+                <WeatherStrip days={weather} />
+              </div>
+            )}
+
+            {/* Pest risks */}
+            {!forecastLoading && !forecastError && risks.length > 0 && (
+              <div>
+                <p className="mb-2 text-sm font-medium text-muted-foreground">Фитосанитарные риски</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {risks.map((risk) => (
+                    <PestRiskCard key={risk.pestId} risk={risk} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Predictive alerts */}
+            {predictiveAlerts.length > 0 && (
+              <PredictiveAlerts alerts={predictiveAlerts} />
+            )}
+
+            {/* Actions */}
+            <section ref={actionsRef}>
+              <p className="mb-2 text-sm font-medium text-muted-foreground">Рекомендации</p>
+              <ActionList risks={risks} fieldId={selectedField.id} />
+            </section>
           </div>
-        )}
 
-        {showForecast && !forecastLoading && !forecastError && weather.length > 0 && (
-          <section className="px-4 py-4">
-            <p className="mb-3 text-sm font-medium text-muted-foreground">Прогноз на 7 дней</p>
-            <WeatherStrip days={weather} />
-          </section>
-        )}
+          {/* Right column */}
+          <div className="space-y-4">
+            <SprayWindowCard lat={selectedField.lat} lng={selectedField.lng} />
 
-        {showForecast && !forecastLoading && !forecastError && risks.length > 0 && (
-          <section className="px-4 py-2">
-            <p className="mb-3 text-sm font-medium text-muted-foreground">Фитосанитарные риски</p>
-            <div className="flex flex-col gap-3">
-              {risks.map((risk) => (
-                <PestRiskCard key={risk.pestId} risk={risk} />
-              ))}
+            <div>
+              <p className="mb-2 text-sm font-medium text-muted-foreground">История осмотров</p>
+              <JournalHistoryCalendar samples={fieldSamples} />
             </div>
-          </section>
-        )}
 
-        {showForecast && (
-          <section ref={actionsRef} className="px-4 py-4">
-            <p className="mb-3 text-sm font-medium text-muted-foreground">Что делать</p>
-            <ActionList risks={risks} fieldId={selectedField?.id ?? "default"} />
-          </section>
-        )}
-      </div>
+            {!isAdmin && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-400">
+                Видны только ваши точки.{" "}
+                <Link href="/settings" className="font-medium underline-offset-2 hover:underline">
+                  Войти как администратор
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

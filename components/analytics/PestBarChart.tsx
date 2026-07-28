@@ -24,7 +24,8 @@ export function PestBarChart({ data, loading }: PestBarChartProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="mb-4 text-sm font-medium text-muted-foreground">Топ вредителей</h2>
+      <h2 className="mb-1 font-semibold">Топ вредителей и болезней</h2>
+      <p className="mb-4 text-xs text-muted-foreground">Количество записей · цвет = средний уровень урона</p>
       {loading ? (
         <div className="h-64 animate-pulse rounded-lg bg-muted" />
       ) : data.length === 0 ? (

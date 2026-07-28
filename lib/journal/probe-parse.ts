@@ -198,10 +198,13 @@ export function parseProbeDetections(data: Record<string, FirestoreValue>): Prob
     const rawThresholdExceeded = data.thresholdExceeded === true
     // При нулевом/пустом пороге метка "превышен порог" невалидна.
     const thresholdExceeded = threshold !== undefined && threshold > 0 ? rawThresholdExceeded : false
-    const severityScore = Math.max(
-      severityFromThreshold(average, threshold, thresholdExceeded),
-      average !== undefined ? Math.min(5, Math.ceil(average / 10)) : 0
-    )
+    const thresholdScore = severityFromThreshold(average, threshold, thresholdExceeded)
+    // Формула average/10 используется только как запасная, когда порог не задан.
+    // Если порог задан — полагаемся исключительно на severityFromThreshold,
+    // чтобы не давать "высокий риск" записям с большим средним, но далёким от порога значением.
+    const severityScore = threshold !== undefined && threshold > 0
+      ? thresholdScore
+      : Math.max(thresholdScore, average !== undefined ? Math.min(5, Math.ceil(average / 10)) : 0)
 
     return [
       finalizeDetection({
@@ -315,7 +318,14 @@ export function probeSeverityScore(data: Record<string, FirestoreValue>): number
   if (type === "entomology") {
     if (data.thresholdExceeded === true) return 5
     const avg = readNumber(data.pestAverage)
-    if (avg !== undefined) return Math.min(5, Math.round(avg / 10))
+    const thr = readNumber(data.threshold)
+    if (avg !== undefined) {
+      // Если порог задан — используем только соотношение к порогу, не raw avg/10
+      if (thr !== undefined && thr > 0) {
+        return severityFromThreshold(avg, thr, false)
+      }
+      return Math.min(5, Math.round(avg / 10))
+    }
     return 0
   }
 

@@ -60,8 +60,8 @@ function InspectorsPageContent() {
       <div>
         <h1 className="text-2xl font-semibold">Инспекторы</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Список исследователей из Firebase <code className="text-xs">users</code> и статистика по
-          пробам <code className="text-xs">samples</code>
+          Список полевых инспекторов и их статистика осмотров
+          {!loading && inspectors.length > 0 && ` · ${inspectors.length} инспекторов`}
         </p>
       </div>
 

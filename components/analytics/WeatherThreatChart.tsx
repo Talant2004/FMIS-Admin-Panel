@@ -40,9 +40,9 @@ export function WeatherThreatChart({
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="text-sm font-medium text-muted-foreground">Погода vs динамика угроз</h2>
+      <h2 className="font-semibold">Погода и фитопатологические угрозы</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Столбцы: осадки · линия: температура · правая ось: средняя P (%) по фитопатологии
+        Осадки (мм) и температура на фоне распространённости болезней (P%) из журнала
       </p>
       {loading ? (
         <div className="mt-4 h-[300px] animate-pulse rounded-lg bg-muted" />

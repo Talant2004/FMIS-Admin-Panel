@@ -29,9 +29,9 @@ export function SetSummaryCard({
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
-      <h2 className="text-sm font-medium text-muted-foreground">СЭТ (сумма эффективных температур)</h2>
+      <h2 className="font-semibold">Сумма эффективных температур (СЭТ)</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        База +5 °C · с начала вегетации
+        Накопленное тепло с начала вегетации (база +5 °C)
         {contextLabel ? ` · ${contextLabel}` : ""}
         {vegStartLabel ? ` · от ${vegStartLabel}` : ""}
       </p>

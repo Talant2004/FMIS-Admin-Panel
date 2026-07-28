@@ -38,7 +38,7 @@ export function DamageTimelineChart({
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Динамика записей</h2>
+        <h2 className="font-semibold">Активность инспекций и уровень урона</h2>
         <div className="flex rounded-lg border overflow-hidden">
           <Button
             type="button"

@@ -196,13 +196,24 @@ export function formatSampleDate(value?: string): string {
 
 export function damageBadgeClass(level?: string): string {
   const normalized = (level ?? "").toLowerCase()
-  if (/(high|высок|сильн|critical|3|severe)/.test(normalized)) {
+
+  // Числовая шкала 0–5 (damageLevel хранится как String(severityScore))
+  const numeric = Number(level)
+  if (Number.isFinite(numeric)) {
+    if (numeric >= 4) return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+    if (numeric >= 2) return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+    if (numeric >= 1) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+    return "bg-muted text-muted-foreground"
+  }
+
+  // Текстовые значения (legacy / другие форматы)
+  if (/(high|высок|сильн|critical|severe)/.test(normalized)) {
     return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
   }
-  if (/(medium|средн|moderate|2)/.test(normalized)) {
+  if (/(medium|средн|moderate)/.test(normalized)) {
     return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
   }
-  if (/(low|низк|weak|1|minor)/.test(normalized)) {
+  if (/(low|низк|weak|minor)/.test(normalized)) {
     return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
   }
   return "bg-muted text-muted-foreground"
