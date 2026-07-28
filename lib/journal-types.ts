@@ -1,4 +1,5 @@
 import type { ProbeDetection } from "@/lib/journal/probe-parse"
+import type { ProbeValidationIssue, ProbeValidationStatus } from "@/lib/journal/probe-validate"
 
 export interface FieldSample {
   id: string
@@ -31,6 +32,8 @@ export interface FieldSample {
   detections: ProbeDetection[]
   maxRiskLevel?: ProbeDetection["riskLevel"] | "none"
   maxRiskReason?: string
+  validationStatus?: ProbeValidationStatus
+  validationIssues?: ProbeValidationIssue[]
 }
 
 export interface JournalUser {

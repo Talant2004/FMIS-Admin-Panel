@@ -316,9 +316,11 @@ export function probeSeverityScore(data: Record<string, FirestoreValue>): number
   const type = pickString(data.monitoringType)
 
   if (type === "entomology") {
-    if (data.thresholdExceeded === true) return 5
     const avg = readNumber(data.pestAverage)
     const thr = readNumber(data.threshold)
+    const rawThresholdExceeded = data.thresholdExceeded === true
+    const thresholdExceeded = thr !== undefined && thr > 0 ? rawThresholdExceeded : false
+    if (thresholdExceeded) return 5
     if (avg !== undefined) {
       // Если порог задан — используем только соотношение к порогу, не raw avg/10
       if (thr !== undefined && thr > 0) {
@@ -380,6 +382,10 @@ export function parseProbeMeta(id: string, data: Record<string, FirestoreValue>)
   const sampleValues = data.sampleValues
   const detections = parseProbeDetections(data)
   const strongest = [...detections].sort((a, b) => b.severityScore - a.severityScore)[0]
+  const threshold = readNumber(data.threshold)
+  const rawThresholdExceeded = data.thresholdExceeded === true
+  const thresholdExceeded =
+    threshold !== undefined && threshold > 0 ? rawThresholdExceeded : false
   return {
     monitoringType: pickString(data.monitoringType) || undefined,
     researchDiscipline: pickString(data.researchDiscipline) || undefined,
@@ -396,11 +402,11 @@ export function parseProbeMeta(id: string, data: Record<string, FirestoreValue>)
     severityScore: probeSeverityScore(data),
     weather: readProbeWeather(data),
     photoUrls: readPhotoUrls(data),
-    thresholdExceeded: data.thresholdExceeded === true,
+    thresholdExceeded,
     pestAverage: readNumber(data.pestAverage),
     countingMethod: pickString(data.countingMethod) || undefined,
     sampleValuesLength: Array.isArray(sampleValues) ? sampleValues.length : undefined,
-    threshold: readNumber(data.threshold),
+    threshold,
     detections,
     maxRiskLevel: strongest?.riskLevel ?? "none",
     maxRiskReason: strongest?.riskReason,
