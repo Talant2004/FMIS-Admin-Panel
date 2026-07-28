@@ -20,10 +20,6 @@ import {
 import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 import { damageBadgeClass, formatSampleDate } from "@/lib/journal-format"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
-import {
-  validationStatusClass,
-  validationStatusLabel,
-} from "@/lib/journal/probe-validate"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 const JournalMap = dynamic(
@@ -44,7 +40,6 @@ function JournalPageContent() {
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null)
   const [sortField, setSortField] = useState<"date" | "createdAt" | "none">("createdAt")
   const [monitoringFilter, setMonitoringFilter] = useState("")
-  const [validationFilter, setValidationFilter] = useState<"" | "issues" | "errors">("")
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const listFilters: JournalListFilters = useMemo(
@@ -132,20 +127,10 @@ function JournalPageContent() {
   }
 
   const filteredSamples = useMemo(() => {
-    let result = samples
-
-    if (validationFilter === "errors") {
-      result = result.filter((sample) => sample.validationStatus === "error")
-    } else if (validationFilter === "issues") {
-      result = result.filter(
-        (sample) => sample.validationStatus === "error" || sample.validationStatus === "warning"
-      )
-    }
-
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return result
+    if (!q) return samples
 
-    return result.filter((sample) => {
+    return samples.filter((sample) => {
       const user = sample.userId ? usersById.get(sample.userId) : undefined
       const inspector = user?.displayName ?? user?.email ?? sample.userId
       const haystack = [
@@ -175,7 +160,7 @@ function JournalPageContent() {
 
       return haystack.includes(q)
     })
-  }, [samples, searchQuery, usersById, validationFilter])
+  }, [samples, searchQuery, usersById])
 
   const selectedSample =
     filteredSamples.find((sample) => sample.id === selectedId) ?? filteredSamples[0] ?? null
@@ -204,16 +189,6 @@ function JournalPageContent() {
     return samples.filter(
       (sample) => sample.latitude !== undefined && sample.longitude !== undefined
     ).length
-  }, [samples])
-
-  const validationIssueCount = useMemo(() => {
-    return samples.filter(
-      (sample) => sample.validationStatus === "error" || sample.validationStatus === "warning"
-    ).length
-  }, [samples])
-
-  const validationErrorCount = useMemo(() => {
-    return samples.filter((sample) => sample.validationStatus === "error").length
   }, [samples])
 
   return (
@@ -256,7 +231,7 @@ function JournalPageContent() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-lg border bg-card px-4 py-3">
             <div className="text-xs text-muted-foreground">Всего записей</div>
             <div className="mt-1 text-2xl font-semibold">{isLoading ? "…" : samples.length}</div>
@@ -279,19 +254,6 @@ function JournalPageContent() {
             <div className={`mt-1 text-2xl font-semibold ${!isLoading && highRiskCount > 0 ? "text-red-700 dark:text-red-400" : ""}`}>
               {isLoading ? "…" : highRiskCount}
             </div>
-          </div>
-          <div className={`rounded-lg border px-4 py-3 ${!isLoading && validationErrorCount > 0 ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900" : "bg-card"}`}>
-            <div className={`text-xs ${!isLoading && validationErrorCount > 0 ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground"}`}>
-              Ошибки расчёта
-            </div>
-            <div className={`mt-1 text-2xl font-semibold ${!isLoading && validationErrorCount > 0 ? "text-amber-800 dark:text-amber-300" : ""}`}>
-              {isLoading ? "…" : validationErrorCount}
-            </div>
-            {!isLoading && validationIssueCount > validationErrorCount && (
-              <div className="mt-1 text-xs text-muted-foreground">
-                + {validationIssueCount - validationErrorCount} предупреждений
-              </div>
-            )}
           </div>
           <div className="rounded-lg border bg-card px-4 py-3">
             <div className="text-xs text-muted-foreground">С координатами</div>
@@ -320,15 +282,6 @@ function JournalPageContent() {
             <option value="entomology">Энтомология</option>
             <option value="phytopathology">Фитопатология</option>
             <option value="herbology">Гербология</option>
-          </select>
-          <select
-            value={validationFilter}
-            onChange={(e) => setValidationFilter(e.target.value as "" | "issues" | "errors")}
-            className="rounded-md border bg-background px-2 py-1.5 text-sm"
-          >
-            <option value="">Все проверки</option>
-            <option value="issues">Только с замечаниями</option>
-            <option value="errors">Только с ошибками</option>
           </select>
           {filteredSamples.length !== samples.length && (
             <Badge variant="outline">Показано: {filteredSamples.length}</Badge>
@@ -382,7 +335,6 @@ function JournalPageContent() {
                     <th className="border px-2 py-1 text-left">Культура</th>
                     <th className="border px-2 py-1 text-left">Поражение</th>
                     <th className="border px-2 py-1 text-left">Риск</th>
-                    <th className="border px-2 py-1 text-left">Проверка</th>
                     <th className="border px-2 py-1 text-left">Координаты</th>
                     <th className="border px-2 py-1 text-left">Фото</th>
                   </tr>
@@ -390,13 +342,13 @@ function JournalPageContent() {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={10} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9} className="border px-3 py-6 text-center text-muted-foreground">
                         Загрузка данных полевого журнала...
                       </td>
                     </tr>
                   ) : filteredSamples.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="border px-3 py-6 text-center text-muted-foreground">
+                      <td colSpan={9} className="border px-3 py-6 text-center text-muted-foreground">
                         Записи не найдены
                       </td>
                     </tr>
@@ -437,13 +389,6 @@ function JournalPageContent() {
                           ) : (
                             "—"
                           )}
-                        </td>
-                        <td className="border px-2 py-1 whitespace-nowrap">
-                          <span
-                            className={`rounded px-1.5 py-0.5 ${validationStatusClass(sample.validationStatus)}`}
-                          >
-                            {validationStatusLabel(sample.validationStatus)}
-                          </span>
                         </td>
                         <td className="border px-2 py-1 whitespace-nowrap">
                           {sample.latitude !== undefined && sample.longitude !== undefined

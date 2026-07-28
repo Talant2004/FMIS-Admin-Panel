@@ -6,7 +6,6 @@ import {
   resolveCoordinates,
   readPhotoUrls,
 } from "@/lib/journal/probe-parse"
-import { validateProbeMath } from "@/lib/journal/probe-validate"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 type FirestoreValue = unknown
@@ -136,7 +135,6 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
   const meta = parseProbeMeta(id, data)
   const photos = readPhotoUrls(data)
   const severity = probeSeverityScore(data)
-  const validation = validateProbeMath(data)
 
   return {
     id,
@@ -170,8 +168,6 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
     detections: meta.detections,
     maxRiskLevel: meta.maxRiskLevel,
     maxRiskReason: meta.maxRiskReason,
-    validationStatus: validation.status,
-    validationIssues: validation.issues,
   }
 }
 

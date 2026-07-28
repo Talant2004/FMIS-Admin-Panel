@@ -3,10 +3,6 @@
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
-import {
-  validationStatusClass,
-  validationStatusLabel,
-} from "@/lib/journal/probe-validate"
 import type { FieldSample } from "@/lib/journal-types"
 import { fetchSoilIndicators } from "@/lib/soil/fetchSoil"
 import type { SoilIndicators } from "@/lib/soil/soilgrids"
@@ -74,46 +70,6 @@ export function ProbeDetailCard({ sample }: { sample: FieldSample }) {
           <Badge variant={riskBadgeVariant(sample.maxRiskLevel)}>{riskLabel(sample.maxRiskLevel)}</Badge>
         ) : null}
       </div>
-
-      {sample.validationIssues && sample.validationIssues.length > 0 ? (
-        <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
-          <div className="flex items-center gap-2">
-            <span
-              className={`rounded px-2 py-0.5 text-[11px] font-semibold ${validationStatusClass(sample.validationStatus)}`}
-            >
-              {validationStatusLabel(sample.validationStatus)}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Проверка таблиц и расчётов
-            </span>
-          </div>
-          <ul className="space-y-2 text-xs">
-            {sample.validationIssues.map((issue) => (
-              <li
-                key={`${issue.code}-${issue.field ?? issue.message}`}
-                className="rounded border bg-background px-2 py-1.5"
-              >
-                <div className="font-medium">
-                  {issue.severity === "error" ? "Ошибка" : "Предупреждение"}
-                  {issue.field ? `: ${issue.field}` : ""}
-                </div>
-                <div className="mt-0.5 text-muted-foreground">{issue.message}</div>
-                {(issue.expected || issue.actual) && (
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    {issue.expected ? `Ожидалось: ${issue.expected}` : null}
-                    {issue.expected && issue.actual ? " · " : null}
-                    {issue.actual ? `В записи: ${issue.actual}` : null}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : sample.validationStatus === "ok" ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">
-          Таблицы и расчёты согласованы
-        </div>
-      ) : null}
 
       <dl className="grid gap-2 text-xs">
         {(sample.fullName || sample.userEmail) && (
