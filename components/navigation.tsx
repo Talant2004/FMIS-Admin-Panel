@@ -19,7 +19,8 @@ const navItems = [
   { label: "Инспекторы", href: "/inspectors", icon: Users },
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
   { label: "Аналитика", href: "/analytics", icon: BarChart3 },
-  { label: "Метеостанция", href: "/meteostation", icon: Radio },
+  { label: "Метеостанция", href: "/meteostation", icon: Radio, exact: true },
+  { label: "Костанай Метеостанция", href: "/meteostation/kostanay", icon: Radio },
   { label: "Настройки", href: "/settings", icon: Settings },
 ]
 
@@ -40,7 +41,10 @@ export function Navigation() {
         {/* nav links */}
         <div className="flex min-w-0 flex-1 items-center overflow-x-auto">
           {navItems.map((item) => {
-            const isActive = currentPath === item.href
+            const isActive =
+              "exact" in item && item.exact
+                ? currentPath === item.href
+                : currentPath === item.href || currentPath.startsWith(item.href + "/")
             return (
               <Link
                 key={item.label}

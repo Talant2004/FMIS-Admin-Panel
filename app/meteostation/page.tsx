@@ -1,5 +1,6 @@
 ﻿"use client"
 
+import Link from "next/link"
 import { useEffect, useState, useCallback } from "react"
 import { Navigation } from "@/components/navigation"
 import type { MeteoReading } from "@/lib/meteostation-types"
@@ -223,6 +224,12 @@ export default function MeteoStationPage() {
         {/* header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
+            <Link
+              href="/meteostation/kostanay"
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors mb-2"
+            >
+              🌾 Костанай Метеостанция
+            </Link>
             <h1 className="text-xl font-bold flex items-center gap-2">
               🌿 Метеостанция
               {latest && (
