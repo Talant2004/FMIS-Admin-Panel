@@ -2,13 +2,12 @@
 
 import Link from "next/link"
 import { Navigation } from "@/components/navigation"
-import { AdminAccessCard } from "@/components/auth/admin-access-card"
 import { useAuth } from "@/components/auth/auth-provider"
 import { SignInPanel } from "@/components/auth/sign-in-panel"
 import { Button } from "@/components/ui/button"
 
 export default function SettingsPage() {
-  const { user, loading, isAdmin, signOut } = useAuth()
+  const { user, loading, signOut } = useAuth()
 
   return (
     <main className="min-h-screen bg-background">
@@ -30,7 +29,6 @@ export default function SettingsPage() {
                 Выйти
               </Button>
             </div>
-            <AdminAccessCard isAdmin={isAdmin} userEmail={user.email} />
           </>
         ) : (
           <SignInPanel
