@@ -185,6 +185,7 @@ export function parseUserFromFirestore(id: string, data: Record<string, Firestor
     displayName: pickFirstString(data, ["displayName", "name", "fullName", "username"]),
     organizationId: pickFirstString(data, ["organizationId", "orgId"]),
     role,
+    researchDiscipline: pickFirstString(data, ["researchDiscipline", "discipline"]),
     fields,
   }
 }

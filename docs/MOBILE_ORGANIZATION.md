@@ -47,3 +47,8 @@ await FirebaseFirestore.instance.collection('samples').add({
 ## Аккаунты инспекторов
 
 Администратор компании создаёт email/пароль на странице **Инспекторы** в веб-панели. Инспектор входит в приложение тем же email/паролем (Email/Password в Firebase Auth).
+
+## Команда инспекторов
+
+Приглашение и согласие: [MOBILE_TEAM_INVITES.md](MOBILE_TEAM_INVITES.md).
+

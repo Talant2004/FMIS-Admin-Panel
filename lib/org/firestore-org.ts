@@ -1,7 +1,7 @@
-import { doc, getDoc } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
 import { KAZNIIZIRK_ORG_ID, DEFAULT_KAZNIIZIRK_ORG } from "@/lib/org/constants"
-import type { Organization, OrgRole, UserOrgProfile } from "@/lib/org/types"
+import type { Organization, UserOrgProfile } from "@/lib/org/types"
 
 type FirestoreValue = unknown
 
@@ -60,6 +60,11 @@ export async function fetchOrganization(orgId: string): Promise<Organization | n
   const snap = await getDoc(doc(getDb(), "organizations", orgId))
   if (!snap.exists()) return null
   return parseOrganization(snap.id, snap.data() as Record<string, FirestoreValue>)
+}
+
+export async function fetchAllOrganizations(): Promise<Organization[]> {
+  const snap = await getDocs(collection(getDb(), "organizations"))
+  return snap.docs.map((d) => parseOrganization(d.id, d.data() as Record<string, FirestoreValue>))
 }
 
 export async function fetchUserOrgProfile(uid: string): Promise<UserOrgProfile | null> {

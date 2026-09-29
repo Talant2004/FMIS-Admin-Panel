@@ -15,7 +15,9 @@
 |------|--------------|------------|
 | `platform_admin` | все | все |
 | `org_admin` | все пробы своей `organizationId` | users своей org |
-| `inspector` | только `userId == auth.uid` в своей org | свой профиль |
+| `inspector` | свои пробы + пробы **принятых** напарников (`inspector_teams` status accepted) | каталог `users` |
+
+Команда: коллекция `inspector_teams`, id = `minUid_maxUid`. См. [MOBILE_TEAM_INVITES.md](MOBILE_TEAM_INVITES.md).
 
 ## Миграция
 

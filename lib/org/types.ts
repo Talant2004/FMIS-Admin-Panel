@@ -28,4 +28,6 @@ export interface OrgScope {
   /** When set, inspectors only see own samples in UI queries. */
   userId: string | null
   organization: Organization | null
+  /** Accepted teammates — mutual journal access for inspectors. */
+  teammateIds: string[]
 }

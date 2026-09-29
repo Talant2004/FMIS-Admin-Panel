@@ -41,5 +41,6 @@ export interface JournalUser {
   displayName?: string
   organizationId?: string
   role?: OrgRole
+  researchDiscipline?: string
   fields: Record<string, string>
 }

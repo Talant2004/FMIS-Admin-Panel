@@ -11,14 +11,17 @@ import {
 } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { fetchOrganization, fetchUserOrgProfile } from "@/lib/org/firestore-org"
-import { buildOrgScope, canCreateInspectors, showKostanayMeteo } from "@/lib/org/org-scope"
+import { buildOrgScope, canCreateInspectors, showKostanayMeteo, withTeammates } from "@/lib/org/org-scope"
 import type { OrgScope, Organization, UserOrgProfile } from "@/lib/org/types"
 import { KAZNIIZIRK_ORG_ID } from "@/lib/org/constants"
+import { acceptedTeammateIds, fetchMyTeamLinks } from "@/lib/team/firestore-teams"
+import type { InspectorTeamLink } from "@/lib/team/types"
 
 type OrgContextValue = {
   profile: UserOrgProfile | null
   organization: Organization | null
   scope: OrgScope
+  teamLinks: InspectorTeamLink[]
   loading: boolean
   refresh: () => Promise<void>
   canCreateInspectors: boolean
@@ -31,12 +34,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const { user, isAdmin, loading: authLoading } = useAuth()
   const [profile, setProfile] = useState<UserOrgProfile | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
+  const [teamLinks, setTeamLinks] = useState<InspectorTeamLink[]>([])
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     if (!user) {
       setProfile(null)
       setOrganization(null)
+      setTeamLinks([])
       setLoading(false)
       return
     }
@@ -62,9 +67,16 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       } else {
         setOrganization(null)
       }
+      if (prof?.uid) {
+        const links = await fetchMyTeamLinks(prof.uid).catch(() => [])
+        setTeamLinks(links)
+      } else {
+        setTeamLinks([])
+      }
     } catch {
       setProfile(null)
       setOrganization(null)
+      setTeamLinks([])
     } finally {
       setLoading(false)
     }
@@ -75,22 +87,24 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     void refresh()
   }, [authLoading, refresh])
 
-  const scope = useMemo(
-    () => buildOrgScope(profile, organization, isAdmin),
-    [profile, organization, isAdmin]
-  )
+  const scope = useMemo(() => {
+    const base = buildOrgScope(profile, organization, isAdmin)
+    if (!profile || base.role !== "inspector") return base
+    return withTeammates(base, acceptedTeammateIds(teamLinks, profile.uid))
+  }, [profile, organization, isAdmin, teamLinks])
 
   const value = useMemo(
     (): OrgContextValue => ({
       profile,
       organization,
       scope,
+      teamLinks,
       loading: authLoading || loading,
       refresh,
       canCreateInspectors: canCreateInspectors(scope),
       showKostanayMeteo: showKostanayMeteo(scope),
     }),
-    [profile, organization, scope, authLoading, loading, refresh]
+    [profile, organization, scope, teamLinks, authLoading, loading, refresh]
   )
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>

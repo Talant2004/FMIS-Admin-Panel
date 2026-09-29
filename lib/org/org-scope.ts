@@ -11,6 +11,7 @@ export function buildOrgScope(
       role: "platform_admin",
       userId: null,
       organization: organization,
+      teammateIds: [],
     }
   }
 
@@ -20,6 +21,7 @@ export function buildOrgScope(
       role: "inspector",
       userId: null,
       organization: null,
+      teammateIds: [],
     }
   }
 
@@ -31,6 +33,7 @@ export function buildOrgScope(
     role,
     userId: role === "inspector" ? profile.uid : null,
     organization,
+    teammateIds: [],
   }
 }
 
@@ -41,4 +44,12 @@ export function canCreateInspectors(scope: OrgScope): boolean {
 export function showKostanayMeteo(scope: OrgScope): boolean {
   if (scope.role === "platform_admin") return true
   return Boolean(scope.organization?.features?.kostanayMeteo)
+}
+
+export function withTeammates(scope: OrgScope, teammateIds: string[]): OrgScope {
+  return { ...scope, teammateIds }
+}
+
+export function ownJournalScope(scope: OrgScope): OrgScope {
+  return { ...scope, teammateIds: [] }
 }

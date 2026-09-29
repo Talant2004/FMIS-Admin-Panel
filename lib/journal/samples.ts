@@ -134,44 +134,86 @@ export async function fetchJournalSamples(
   const orgFilters = scopeToJournalFilters(scope ?? null)
   const orgId = orgFilters.organizationId
   const userId = orgFilters.userId
+  const userIds = orgFilters.userIds
+  const isPlatform = !scope || scope.role === "platform_admin"
 
   const queries = [
     () =>
-      orgId
+      userIds && userIds.length > 1
+        ? query(
+            col,
+            where("userId", "in", userIds.slice(0, 10)),
+            where("date", ">=", sinceTs),
+            orderBy("date", "desc"),
+            limit(maxDocs)
+          )
+        : userId
+        ? query(
+            col,
+            where("userId", "==", userId),
+            where("date", ">=", sinceTs),
+            orderBy("date", "desc"),
+            limit(maxDocs)
+          )
+        : orgId
         ? query(
             col,
             where("organizationId", "==", orgId),
-            ...(userId ? [where("userId", "==", userId)] : []),
             where("date", ">=", sinceTs),
             orderBy("date", "desc"),
             limit(maxDocs)
           )
         : query(col, where("date", ">=", sinceTs), orderBy("date", "desc"), limit(maxDocs)),
     () =>
-      orgId
+      userIds && userIds.length > 1
+        ? query(
+            col,
+            where("userId", "in", userIds.slice(0, 10)),
+            where("createdAt", ">=", sinceTs),
+            orderBy("createdAt", "desc"),
+            limit(maxDocs)
+          )
+        : userId
+        ? query(
+            col,
+            where("userId", "==", userId),
+            where("createdAt", ">=", sinceTs),
+            orderBy("createdAt", "desc"),
+            limit(maxDocs)
+          )
+        : orgId
         ? query(
             col,
             where("organizationId", "==", orgId),
-            ...(userId ? [where("userId", "==", userId)] : []),
             where("createdAt", ">=", sinceTs),
             orderBy("createdAt", "desc"),
             limit(maxDocs)
           )
         : query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
     () =>
-      orgId
-        ? query(
-            col,
-            where("organizationId", "==", orgId),
-            ...(userId ? [where("userId", "==", userId)] : []),
-            orderBy("createdAt", "desc"),
-            limit(maxDocs)
-          )
+      userIds && userIds.length > 1
+        ? query(col, where("userId", "in", userIds.slice(0, 10)), orderBy("createdAt", "desc"), limit(maxDocs))
+        : userId
+        ? query(col, where("userId", "==", userId), orderBy("createdAt", "desc"), limit(maxDocs))
+        : orgId
+        ? query(col, where("organizationId", "==", orgId), orderBy("createdAt", "desc"), limit(maxDocs))
         : query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
-    () => query(col, orderBy("date", "desc"), limit(maxDocs)),
-    () => query(col, limit(maxDocs)),
-    () => query(col),
   ]
+
+  if (userId) {
+    queries.push(() => query(col, where("userId", "==", userId), limit(maxDocs)))
+  }
+  if (userIds && userIds.length > 1) {
+    queries.push(() => query(col, where("userId", "in", userIds.slice(0, 10)), limit(maxDocs)))
+  }
+
+  if (isPlatform) {
+    queries.push(
+      () => query(col, orderBy("date", "desc"), limit(maxDocs)),
+      () => query(col, limit(maxDocs)),
+      () => query(col)
+    )
+  }
 
   for (const build of queries) {
     try {

@@ -23,6 +23,8 @@ export type JournalListFilters = {
   farmingName?: string
   organizationId?: string
   userId?: string
+  /** Inspector + teammates (Firestore `in`, max 10). */
+  userIds?: string[]
 }
 
 type FirestoreValue = unknown
@@ -49,16 +51,28 @@ function buildConstraints(
   if (filters.farmingName?.trim()) {
     constraints.push(where("farmingName", "==", filters.farmingName.trim()))
   }
-  if (filters.organizationId) {
-    constraints.push(where("organizationId", "==", filters.organizationId))
-  }
-  if (filters.userId) {
-    constraints.push(where("userId", "==", filters.userId))
+  if (filters.userIds && filters.userIds.length > 1) {
+    constraints.push(where("userId", "in", filters.userIds.slice(0, 10)))
+  } else {
+    if (filters.organizationId) {
+      constraints.push(where("organizationId", "==", filters.organizationId))
+    }
+    if (filters.userId) {
+      constraints.push(where("userId", "==", filters.userId))
+    }
   }
   constraints.push(orderBy(sortField, "desc"))
   if (cursor) constraints.push(startAfter(cursor))
   constraints.push(limit(pageSize))
   return constraints
+}
+
+function hasSafeSampleConstraint(filters: JournalListFilters): boolean {
+  return Boolean(
+    filters.userId ||
+    (filters.userIds && filters.userIds.length > 0) ||
+    filters.organizationId
+  )
 }
 
 async function runQuery(
@@ -105,6 +119,7 @@ export async function fetchJournalPage(options: {
   const scope = options.scope ?? null
   const preferredSort = options.sortField
 
+  const isPlatform = !scope || scope.role === "platform_admin"
   const sortAttempts: Array<"date" | "createdAt" | "none"> = preferredSort
     ? [preferredSort]
     : ["date", "createdAt"]
@@ -112,13 +127,15 @@ export async function fetchJournalPage(options: {
   for (const sort of sortAttempts) {
     try {
       if (sort === "none") {
-        if (cursor) continue
+        if (cursor || !isPlatform) continue
         const docs = await runQuery([limit(pageSize)])
         if (docs.length === 0) continue
         return { ...pageResult(docs, pageSize), sortField: "none" }
       }
 
-      const docs = await runQuery(buildConstraints(sort, filters, pageSize, cursor))
+      const constraints = buildConstraints(sort, filters, pageSize, cursor)
+      if (!isPlatform && !hasSafeSampleConstraint(filters)) continue
+      const docs = await runQuery(constraints)
       if (docs.length === 0) continue
       const page = pageResult(docs, pageSize)
       page.samples = filterFieldSamples(page.samples, scope)
@@ -128,7 +145,20 @@ export async function fetchJournalPage(options: {
     }
   }
 
-  if (!cursor) {
+  if (!cursor && filters.userId) {
+    try {
+      const docs = await runQuery([where("userId", "==", filters.userId), limit(pageSize)])
+      if (docs.length > 0) {
+        const page = pageResult(docs, pageSize)
+        page.samples = filterFieldSamples(page.samples, scope)
+        return { ...page, sortField: "none" }
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (!cursor && isPlatform) {
     try {
       const docs = await runQuery([limit(pageSize)])
       if (docs.length > 0) {

@@ -5,18 +5,11 @@ import { usePathname } from "next/navigation"
 import { useOrg } from "@/components/auth/org-provider"
 import { UserMenu } from "@/components/auth/user-menu"
 import { cn } from "@/lib/utils"
-import {
-  BookOpen,
-  Users,
-  CloudSun,
-  BarChart3,
-  Settings,
-  Wheat,
-  Radio,
-} from "lucide-react"
+import { BookOpen, NotebookPen, Users, CloudSun, BarChart3, Settings, Wheat, Radio } from "lucide-react"
 
 const baseNavItems = [
-  { label: "Журнал", href: "/journal", icon: BookOpen },
+  { label: "Журнал", href: "/journal", icon: BookOpen, exact: true },
+  { label: "Мой журнал", href: "/journal/my", icon: NotebookPen },
   { label: "Инспекторы", href: "/inspectors", icon: Users },
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
   { label: "Аналитика", href: "/analytics", icon: BarChart3 },

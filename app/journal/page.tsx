@@ -22,6 +22,7 @@ import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 import { damageBadgeClass, formatSampleDate } from "@/lib/journal-format"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
 import { filterJournalUsers, scopeToJournalFilters } from "@/lib/journal/org-filters"
+import { ownJournalScope } from "@/lib/org/org-scope"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 const JournalMap = dynamic(
@@ -29,9 +30,10 @@ const JournalMap = dynamic(
   { ssr: false }
 )
 
-function JournalPageContent() {
+export function JournalPageContent({ variant = "team" }: { variant?: "team" | "mine" }) {
   const { user } = useAuth()
-  const { scope } = useOrg()
+  const { scope: rawScope } = useOrg()
+  const scope = variant === "mine" ? ownJournalScope(rawScope) : rawScope
   const [samples, setSamples] = useState<FieldSample[]>([])
   const [users, setUsers] = useState<JournalUser[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -67,11 +69,6 @@ function JournalPageContent() {
       setSortField(page.sortField)
       setUsers(filterJournalUsers(usersList, scope))
       setSelectedId(page.samples[0]?.id ?? null)
-      if (page.samples.length === 0 && usersList.length > 0) {
-        setLoadError(
-          "Записи samples не загрузились. Проверьте вход (админ-email) и правила Firestore. Если в приложении поле даты — createdAt, обновите страницу после исправления."
-        )
-      }
     } catch (error) {
       console.error("Failed to load field journal data.", error)
       setLoadError(
@@ -115,7 +112,7 @@ function JournalPageContent() {
 
   useEffect(() => {
     void loadFirstPage()
-  }, [user?.uid, monitoringFilter, scope])
+  }, [user?.uid, monitoringFilter, scope, variant])
 
   const usersById = useMemo(() => {
     const map = new Map<string, JournalUser>()
@@ -200,9 +197,15 @@ function JournalPageContent() {
       <div className="space-y-4 p-4 md:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Полевой журнал</h1>
+            <h1 className="text-2xl font-semibold">
+              {variant === "mine" ? "Мой журнал" : "Полевой журнал"}
+            </h1>
             <p className="text-sm text-muted-foreground">
-              Записи полевых осмотров инспекторов
+              {variant === "mine"
+                ? "Только ваши пробы"
+                : rawScope.role === "inspector"
+                  ? "Ваши пробы и журнал команды после взаимного согласия"
+                  : "Записи полевых осмотров инспекторов"}
               {!isLoading && samples.length > 0 && ` · ${samples.length} записей загружено`}
             </p>
           </div>
