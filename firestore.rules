@@ -82,7 +82,9 @@ service cloud.firestore {
     }
 
     match /inspector_teams/{pairId} {
-      allow read: if request.auth != null && (
+      // Без get на несуществующий документ приглашение падает: Missing or insufficient permissions.
+      allow get: if request.auth != null;
+      allow list: if request.auth != null && (
         isPlatformAdmin() ||
         request.auth.uid == resource.data.fromUserId ||
         request.auth.uid == resource.data.toUserId ||

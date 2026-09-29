@@ -94,12 +94,12 @@ export async function sendTeamInvite(options: {
 
   const id = teamPairId(fromId, toId)
   const ref = doc(getDb(), COLLECTION, id)
-  const existing = await getDoc(ref)
+  const existing = await getDoc(ref).catch(() => null)
   const fromName = options.fromUser.displayName || options.fromUser.email || fromId
   const toName = options.toUser.displayName || options.toUser.email || toId
   const now = new Date().toISOString()
 
-  if (existing.exists()) {
+  if (existing?.exists()) {
     const link = parseLink(id, existing.data() as Record<string, FirestoreValue>)
     if (!link) return { ok: false, error: "Некорректная запись команды" }
     if (link.status === "accepted") return { ok: false, error: "Вы уже в команде" }

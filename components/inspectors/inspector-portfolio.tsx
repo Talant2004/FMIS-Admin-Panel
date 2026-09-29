@@ -12,6 +12,7 @@ import {
   sendTeamInvite,
 } from "@/lib/team/firestore-teams"
 import { otherTeamUserId, type InspectorTeamLink } from "@/lib/team/types"
+import { firestoreUserMessage } from "@/lib/auth/firestore-error"
 
 function orgLabel(user: JournalUser, orgs: Map<string, string>) {
   if (!user.organizationId) return "—"
@@ -47,7 +48,7 @@ export function IncomingInvitesCard({
               type="button"
               size="sm"
               onClick={() => {
-                void acceptTeamInvite(link.id, uid).then(onChanged).catch((e) => alert(e.message))
+                void acceptTeamInvite(link.id, uid).then(onChanged).catch((e) => alert(firestoreUserMessage(e)))
               }}
             >
               Принять
@@ -57,7 +58,7 @@ export function IncomingInvitesCard({
               size="sm"
               variant="outline"
               onClick={() => {
-                void removeTeamLink(link.id).then(onChanged).catch((e) => alert(e.message))
+                void removeTeamLink(link.id).then(onChanged).catch((e) => alert(firestoreUserMessage(e)))
               }}
             >
               Отклонить
@@ -122,7 +123,7 @@ export function InspectorPortfolioGrid({
       }
       await refresh()
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Ошибка")
+      alert(firestoreUserMessage(err, "Не удалось отправить приглашение"))
     } finally {
       setBusyId(null)
     }

@@ -7,3 +7,10 @@ export function isPermissionDenied(error: unknown): boolean {
 
 export const PERMISSION_DENIED_HINT =
   "Нет доступа к данным. Войдите в аккаунт или проверьте правила Firestore для коллекции samples."
+
+export function firestoreUserMessage(error: unknown, fallback = "Ошибка"): string {
+  if (isPermissionDenied(error)) {
+    return "Нет права на это действие. Обновите страницу и попробуйте снова."
+  }
+  return error instanceof Error && error.message ? error.message : fallback
+}
