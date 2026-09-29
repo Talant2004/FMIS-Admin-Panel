@@ -134,108 +134,77 @@ export async function fetchJournalSamples(
   const orgFilters = scopeToJournalFilters(scope ?? null)
   const orgId = orgFilters.organizationId
   const userId = orgFilters.userId
-  const userIds = orgFilters.userIds
+  const userEmail = orgFilters.userEmail
+  const teammateIds = (orgFilters.userIds ?? []).filter((id) => id && id !== userId)
   const isPlatform = !scope || scope.role === "platform_admin"
 
-  const queries = [
-    () =>
-      userIds && userIds.length > 1
-        ? query(
-            col,
-            where("userId", "in", userIds.slice(0, 10)),
-            where("date", ">=", sinceTs),
-            orderBy("date", "desc"),
-            limit(maxDocs)
-          )
-        : userId
-        ? query(
-            col,
-            where("userId", "==", userId),
-            where("date", ">=", sinceTs),
-            orderBy("date", "desc"),
-            limit(maxDocs)
-          )
-        : orgId
-        ? query(
-            col,
-            where("organizationId", "==", orgId),
-            where("date", ">=", sinceTs),
-            orderBy("date", "desc"),
-            limit(maxDocs)
-          )
-        : query(col, where("date", ">=", sinceTs), orderBy("date", "desc"), limit(maxDocs)),
-    () =>
-      userIds && userIds.length > 1
-        ? query(
-            col,
-            where("userId", "in", userIds.slice(0, 10)),
-            where("createdAt", ">=", sinceTs),
-            orderBy("createdAt", "desc"),
-            limit(maxDocs)
-          )
-        : userId
-        ? query(
-            col,
-            where("userId", "==", userId),
-            where("createdAt", ">=", sinceTs),
-            orderBy("createdAt", "desc"),
-            limit(maxDocs)
-          )
-        : orgId
-        ? query(
-            col,
-            where("organizationId", "==", orgId),
-            where("createdAt", ">=", sinceTs),
-            orderBy("createdAt", "desc"),
-            limit(maxDocs)
-          )
-        : query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
-    () =>
-      userIds && userIds.length > 1
-        ? query(col, where("userId", "in", userIds.slice(0, 10)), orderBy("createdAt", "desc"), limit(maxDocs))
-        : userId
-        ? query(col, where("userId", "==", userId), orderBy("createdAt", "desc"), limit(maxDocs))
-        : orgId
-        ? query(col, where("organizationId", "==", orgId), orderBy("createdAt", "desc"), limit(maxDocs))
-        : query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
-  ]
+  const queries: Array<() => ReturnType<typeof query>> = []
 
   if (userId) {
-    queries.push(() => query(col, where("userId", "==", userId), limit(maxDocs)))
+    queries.push(
+      () => query(col, where("userId", "==", userId), where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, where("userId", "==", userId), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, where("userId", "==", userId), limit(maxDocs)),
+      () => query(col, where("uid", "==", userId), limit(maxDocs))
+    )
   }
-  if (userIds && userIds.length > 1) {
-    queries.push(() => query(col, where("userId", "in", userIds.slice(0, 10)), limit(maxDocs)))
+  if (userEmail) {
+    queries.push(
+      () => query(col, where("userEmail", "==", userEmail), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, where("userEmail", "==", userEmail), limit(maxDocs))
+    )
+  }
+  if (orgId && !userId) {
+    queries.push(
+      () => query(col, where("organizationId", "==", orgId), where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, where("organizationId", "==", orgId), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, where("organizationId", "==", orgId), limit(maxDocs))
+    )
+  }
+  if (isPlatform && !userId && !orgId) {
+    queries.push(
+      () => query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
+      () => query(col, limit(maxDocs))
+    )
   }
 
-  if (isPlatform) {
-    queries.push(
-      () => query(col, orderBy("date", "desc"), limit(maxDocs)),
-      () => query(col, limit(maxDocs)),
-      () => query(col)
-    )
+  const collected: JournalSample[] = []
+  const seen = new Set<string>()
+
+  const ingest = (rows: JournalSample[]) => {
+    for (const sample of rows) {
+      if (seen.has(sample.id)) continue
+      seen.add(sample.id)
+      collected.push(sample)
+    }
   }
 
   for (const build of queries) {
     try {
       const snap = await getDocs(build())
-      let samples = snap.docs.map((doc) =>
-        parseJournalSample(doc.id, doc.data() as Record<string, FirestoreValue>)
-      )
-      if (samples.length === 0) continue
-
-      samples = filterJournalSamples(
-        samples
-          .filter((s) => s.date >= since)
-          .sort((a, b) => b.date.getTime() - a.date.getTime()),
-        scope ?? null
-      )
-      return samples.slice(0, maxDocs)
+      ingest(snap.docs.map((docSnap) => parseJournalSample(docSnap.id, docSnap.data() as Record<string, FirestoreValue>)))
+      if (collected.length > 0) break
     } catch {
       continue
     }
   }
 
-  return []
+  for (const teammateId of teammateIds) {
+    try {
+      const snap = await getDocs(query(col, where("userId", "==", teammateId), limit(maxDocs)))
+      ingest(snap.docs.map((docSnap) => parseJournalSample(docSnap.id, docSnap.data() as Record<string, FirestoreValue>)))
+    } catch {
+      continue
+    }
+  }
+
+  return filterJournalSamples(
+    collected
+      .filter((s) => s.date >= since)
+      .sort((a, b) => b.date.getTime() - a.date.getTime()),
+    scope ?? null
+  ).slice(0, maxDocs)
 }
 
 export function countSamplesWithCoordinates(samples: JournalSample[]): number {

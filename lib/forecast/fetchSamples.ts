@@ -13,7 +13,13 @@ let cachedSamples: JournalSample[] | null = null
 let cachedScopeKey = ""
 
 export async function loadJournalSamplesCache(scope?: OrgScope | null): Promise<JournalSample[]> {
-  const scopeKey = scope?.organizationId ?? scope?.role ?? "all"
+  const scopeKey = [
+    scope?.role ?? "all",
+    scope?.userId ?? "",
+    scope?.userEmail ?? "",
+    scope?.organizationId ?? "",
+    (scope?.teammateIds ?? []).join(","),
+  ].join("|")
   if (cachedSamples && cachedScopeKey === scopeKey) return cachedSamples
   cachedSamples = await fetchJournalSamples(365, 500, scope)
   cachedScopeKey = scopeKey

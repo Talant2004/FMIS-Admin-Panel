@@ -23,8 +23,9 @@ export type JournalListFilters = {
   farmingName?: string
   organizationId?: string
   userId?: string
-  /** Inspector + teammates (Firestore `in`, max 10). */
+  /** Inspector + teammates (не используем Firestore `in` — иначе отказ по чужим документам). */
   userIds?: string[]
+  userEmail?: string
 }
 
 type FirestoreValue = unknown
@@ -38,69 +39,134 @@ function sampleSortTime(sample: FieldSample): number {
   return Number.isFinite(t) ? t : 0
 }
 
-function buildConstraints(
-  sortField: "date" | "createdAt",
-  filters: JournalListFilters,
-  pageSize: number,
-  cursor?: QueryDocumentSnapshot<DocumentData>
-): QueryConstraint[] {
-  const constraints: QueryConstraint[] = []
-  if (filters.monitoringType) {
-    constraints.push(where("monitoringType", "==", filters.monitoringType))
-  }
-  if (filters.farmingName?.trim()) {
-    constraints.push(where("farmingName", "==", filters.farmingName.trim()))
-  }
-  if (filters.userIds && filters.userIds.length > 1) {
-    constraints.push(where("userId", "in", filters.userIds.slice(0, 10)))
-  } else {
-    if (filters.organizationId) {
-      constraints.push(where("organizationId", "==", filters.organizationId))
-    }
-    if (filters.userId) {
-      constraints.push(where("userId", "==", filters.userId))
-    }
-  }
-  constraints.push(orderBy(sortField, "desc"))
-  if (cursor) constraints.push(startAfter(cursor))
-  constraints.push(limit(pageSize))
-  return constraints
+function uniqueById(samples: FieldSample[]): FieldSample[] {
+  const map = new Map<string, FieldSample>()
+  for (const sample of samples) map.set(sample.id, sample)
+  return [...map.values()]
 }
 
-function hasSafeSampleConstraint(filters: JournalListFilters): boolean {
-  return Boolean(
-    filters.userId ||
-    (filters.userIds && filters.userIds.length > 0) ||
-    filters.organizationId
-  )
+function applyClientFilters(samples: FieldSample[], filters: JournalListFilters): FieldSample[] {
+  let next = samples
+  if (filters.monitoringType) {
+    next = next.filter((s) => s.monitoringType === filters.monitoringType)
+  }
+  if (filters.farmingName?.trim()) {
+    const name = filters.farmingName.trim()
+    next = next.filter((s) => s.farmingName === name)
+  }
+  return next
+}
+
+function hasOwnerConstraint(filters: JournalListFilters): boolean {
+  return Boolean(filters.userId || filters.userEmail || filters.organizationId)
 }
 
 async function runQuery(
   constraints: QueryConstraint[]
-): Promise<QueryDocumentSnapshot<DocumentData>[]> {
-  const col = collection(getDb(), "samples")
-  const snap = await getDocs(query(col, ...constraints))
-  return snap.docs
+): Promise<QueryDocumentSnapshot<DocumentData>[] | null> {
+  try {
+    const col = collection(getDb(), "samples")
+    const snap = await getDocs(query(col, ...constraints))
+    return snap.docs
+  } catch {
+    return null
+  }
 }
 
-function pageResult(
-  docs: QueryDocumentSnapshot<DocumentData>[],
-  pageSize: number
+function pageFromSamples(
+  samples: FieldSample[],
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null,
+  pageSize: number,
+  hasMore: boolean
 ): {
   samples: FieldSample[]
   lastDoc: QueryDocumentSnapshot<DocumentData> | null
   hasMore: boolean
 } {
-  const samples = docs.map(parseDoc).sort((a, b) => sampleSortTime(b) - sampleSortTime(a))
-  const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null
-  return {
-    samples,
-    lastDoc,
-    hasMore: docs.length === pageSize,
-  }
+  const sorted = uniqueById(samples).sort((a, b) => sampleSortTime(b) - sampleSortTime(a))
+  return { samples: sorted, lastDoc, hasMore }
 }
 
-/** Курсорная страница журнала. Несколько вариантов запроса — как в fetchJournalSamples. */
+async function queryByField(
+  field: "userId" | "userEmail" | "organizationId" | "uid",
+  value: string,
+  sortField: "createdAt" | "date",
+  pageSize: number,
+  cursor?: QueryDocumentSnapshot<DocumentData>
+): Promise<{
+  docs: QueryDocumentSnapshot<DocumentData>[] | null
+  sortField: "createdAt" | "date" | "none"
+}> {
+  const ordered = await runQuery([
+    where(field, "==", value),
+    orderBy(sortField, "desc"),
+    ...(cursor ? [startAfter(cursor)] : []),
+    limit(pageSize),
+  ])
+  if (ordered && ordered.length > 0) {
+    return { docs: ordered, sortField }
+  }
+
+  if (!cursor) {
+    const unordered = await runQuery([where(field, "==", value), limit(pageSize)])
+    if (unordered && unordered.length > 0) {
+      return { docs: unordered, sortField: "none" }
+    }
+  }
+
+  return { docs: ordered, sortField }
+}
+
+async function fetchOwnerDocs(
+  filters: JournalListFilters,
+  pageSize: number,
+  cursor?: QueryDocumentSnapshot<DocumentData>,
+  preferredSort?: "createdAt" | "date"
+): Promise<{
+  docs: QueryDocumentSnapshot<DocumentData>[]
+  sortField: "createdAt" | "date" | "none"
+}> {
+  const sorts: Array<"createdAt" | "date"> = preferredSort ? [preferredSort] : ["createdAt", "date"]
+  const ownerFields: Array<{ field: "userId" | "userEmail" | "uid" | "organizationId"; value: string }> = []
+  if (filters.userId) {
+    ownerFields.push({ field: "userId", value: filters.userId })
+    ownerFields.push({ field: "uid", value: filters.userId })
+  }
+  if (filters.userEmail) {
+    ownerFields.push({ field: "userEmail", value: filters.userEmail })
+    const lower = filters.userEmail.trim().toLowerCase()
+    if (lower && lower !== filters.userEmail) {
+      ownerFields.push({ field: "userEmail", value: lower })
+    }
+  }
+  if (filters.organizationId && ownerFields.length === 0) {
+    ownerFields.push({ field: "organizationId", value: filters.organizationId })
+  }
+
+  for (const sort of sorts) {
+    for (const { field, value } of ownerFields) {
+      const result = await queryByField(field, value, sort, pageSize, cursor)
+      if (result.docs && result.docs.length > 0) {
+        return { docs: result.docs, sortField: result.sortField }
+      }
+    }
+  }
+
+  return { docs: [], sortField: "none" }
+}
+
+async function fetchTeammateSamples(userIds: string[], pageSize: number): Promise<FieldSample[]> {
+  const extras: FieldSample[] = []
+  for (const uid of userIds) {
+    const result = await queryByField("userId", uid, "createdAt", pageSize)
+    if (result.docs && result.docs.length > 0) {
+      extras.push(...result.docs.map(parseDoc))
+    }
+  }
+  return extras
+}
+
+/** Курсорная страница журнала. Сначала createdAt — в пробах нет поля date. */
 export async function fetchJournalPage(options: {
   pageSize?: number
   cursor?: QueryDocumentSnapshot<DocumentData> | null
@@ -117,59 +183,41 @@ export async function fetchJournalPage(options: {
   const filters = { ...scopeToJournalFilters(options.scope), ...(options.filters ?? {}) }
   const cursor = options.cursor ?? undefined
   const scope = options.scope ?? null
-  const preferredSort = options.sortField
-
   const isPlatform = !scope || scope.role === "platform_admin"
-  const sortAttempts: Array<"date" | "createdAt" | "none"> = preferredSort
-    ? [preferredSort]
-    : ["date", "createdAt"]
 
-  for (const sort of sortAttempts) {
-    try {
-      if (sort === "none") {
-        if (cursor || !isPlatform) continue
-        const docs = await runQuery([limit(pageSize)])
-        if (docs.length === 0) continue
-        return { ...pageResult(docs, pageSize), sortField: "none" }
-      }
+  const ownerPage = hasOwnerConstraint(filters)
+    ? await fetchOwnerDocs(
+        filters,
+        pageSize,
+        cursor,
+        options.sortField === "date" || options.sortField === "createdAt" ? options.sortField : undefined
+      )
+    : { docs: [] as QueryDocumentSnapshot<DocumentData>[], sortField: "none" as const }
 
-      const constraints = buildConstraints(sort, filters, pageSize, cursor)
-      if (!isPlatform && !hasSafeSampleConstraint(filters)) continue
-      const docs = await runQuery(constraints)
-      if (docs.length === 0) continue
-      const page = pageResult(docs, pageSize)
-      page.samples = filterFieldSamples(page.samples, scope)
-      return { ...page, sortField: sort }
-    } catch {
-      continue
-    }
+  let samples = ownerPage.docs.map(parseDoc)
+  let lastDoc = ownerPage.docs.length > 0 ? ownerPage.docs[ownerPage.docs.length - 1] : null
+  let hasMore = ownerPage.docs.length === pageSize
+  let sortField = ownerPage.sortField
+
+  const teammateIds = (filters.userIds ?? []).filter((id) => id && id !== filters.userId)
+  if (!cursor && teammateIds.length > 0) {
+    samples = [...samples, ...(await fetchTeammateSamples(teammateIds, pageSize))]
   }
 
-  if (!cursor && filters.userId) {
-    try {
-      const docs = await runQuery([where("userId", "==", filters.userId), limit(pageSize)])
-      if (docs.length > 0) {
-        const page = pageResult(docs, pageSize)
-        page.samples = filterFieldSamples(page.samples, scope)
-        return { ...page, sortField: "none" }
-      }
-    } catch {
-      /* fall through */
-    }
+  if (samples.length === 0 && isPlatform && !cursor) {
+    const docs =
+      (await runQuery([orderBy("createdAt", "desc"), limit(pageSize)])) ??
+      (await runQuery([limit(pageSize)])) ??
+      []
+    samples = docs.map(parseDoc)
+    lastDoc = docs.length > 0 ? docs[docs.length - 1] : null
+    hasMore = docs.length === pageSize
+    sortField = "createdAt"
   }
 
-  if (!cursor && isPlatform) {
-    try {
-      const docs = await runQuery([limit(pageSize)])
-      if (docs.length > 0) {
-        return { ...pageResult(docs, pageSize), sortField: "none" }
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-
-  return { samples: [], lastDoc: null, hasMore: false, sortField: "none" }
+  samples = applyClientFilters(filterFieldSamples(samples, scope), filters)
+  const page = pageFromSamples(samples, lastDoc, pageSize, hasMore)
+  return { ...page, sortField }
 }
 
 export async function fetchJournalFirstPage(

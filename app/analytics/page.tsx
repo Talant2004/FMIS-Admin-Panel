@@ -63,7 +63,7 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 function AnalyticsPageContent() {
   const { user } = useAuth()
-  const { scope } = useOrg()
+  const { scope, loading: orgLoading } = useOrg()
   const [mode, setMode] = useState<"overview" | "detailed">("overview")
   const [dateRange, setDateRange] = useState(30)
   const [groupBy, setGroupBy] = useState<"day" | "week">("day")
@@ -83,6 +83,7 @@ function AnalyticsPageContent() {
   const [vegWeatherLoading, setVegWeatherLoading] = useState(false)
 
   useEffect(() => {
+    if (orgLoading) return
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -120,7 +121,7 @@ function AnalyticsPageContent() {
     return () => {
       cancelled = true
     }
-  }, [dateRange, user?.uid, scope])
+  }, [dateRange, user?.uid, orgLoading, scope.role, scope.userId, scope.organizationId, scope.userEmail])
 
   const { farms, crops } = useMemo(() => uniqueFarmsAndCrops(samples), [samples])
   const qc = useMemo(() => calcQcMetrics(samples, enterprises), [samples, enterprises])

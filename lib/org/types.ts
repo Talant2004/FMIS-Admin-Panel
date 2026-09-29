@@ -27,6 +27,8 @@ export interface OrgScope {
   role: OrgRole
   /** When set, inspectors only see own samples in UI queries. */
   userId: string | null
+  /** Auth / profile email — fallback match for samples.userEmail. */
+  userEmail: string | null
   organization: Organization | null
   /** Accepted teammates — mutual journal access for inspectors. */
   teammateIds: string[]

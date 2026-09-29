@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore"
 import { getDb } from "@/lib/firebase"
 import { KAZNIIZIRK_ORG_ID, DEFAULT_KAZNIIZIRK_ORG } from "@/lib/org/constants"
 import type { Organization, UserOrgProfile } from "@/lib/org/types"
@@ -71,4 +71,35 @@ export async function fetchUserOrgProfile(uid: string): Promise<UserOrgProfile |
   const snap = await getDoc(doc(getDb(), "users", uid))
   if (!snap.exists()) return null
   return parseUserOrgProfile(uid, snap.data() as Record<string, FirestoreValue>)
+}
+
+/** Если в `users/{uid}` ещё нет профиля — создать inspector в kazniizirk. */
+export async function ensureUserOrgProfile(
+  user: { uid: string; email?: string | null; displayName?: string | null },
+  isPlatformAdminEmail: boolean
+): Promise<UserOrgProfile> {
+  const existing = await fetchUserOrgProfile(user.uid)
+  if (existing) return existing
+
+  const profile: UserOrgProfile = {
+    uid: user.uid,
+    email: user.email ?? undefined,
+    displayName: user.displayName ?? undefined,
+    organizationId: KAZNIIZIRK_ORG_ID,
+    role: isPlatformAdminEmail ? "platform_admin" : "inspector",
+  }
+
+  await setDoc(
+    doc(getDb(), "users", user.uid),
+    {
+      email: profile.email ?? null,
+      displayName: profile.displayName ?? null,
+      organizationId: profile.organizationId,
+      role: profile.role,
+      createdAt: new Date().toISOString(),
+    },
+    { merge: true }
+  )
+
+  return profile
 }

@@ -32,8 +32,16 @@ const JournalMap = dynamic(
 
 export function JournalPageContent({ variant = "team" }: { variant?: "team" | "mine" }) {
   const { user } = useAuth()
-  const { scope: rawScope } = useOrg()
-  const scope = variant === "mine" ? ownJournalScope(rawScope) : rawScope
+  const { scope: rawScope, loading: orgLoading } = useOrg()
+  const scope = useMemo(
+    () =>
+      variant === "mine"
+        ? ownJournalScope(rawScope, { uid: user?.uid, email: user?.email })
+        : rawScope.role === "inspector" && !rawScope.userId && user?.uid
+          ? { ...rawScope, userId: user.uid, userEmail: user.email?.toLowerCase() ?? rawScope.userEmail }
+          : rawScope,
+    [variant, rawScope, user?.uid, user?.email]
+  )
   const [samples, setSamples] = useState<FieldSample[]>([])
   const [users, setUsers] = useState<JournalUser[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -51,42 +59,21 @@ export function JournalPageContent({ variant = "team" }: { variant?: "team" | "m
     () => ({
       ...scopeToJournalFilters(scope),
       monitoringType: monitoringFilter || undefined,
+      userId: scope.userId ?? undefined,
+      userEmail: scope.userEmail ?? user?.email?.toLowerCase() ?? undefined,
     }),
-    [monitoringFilter, scope]
+    [monitoringFilter, scope, user?.email]
   )
 
-  const loadFirstPage = async () => {
-    setIsLoading(true)
-    setLoadError(null)
-    try {
-      const [page, usersList] = await Promise.all([
-        fetchJournalFirstPage(listFilters, scope),
-        getJournalUsers(),
-      ])
-      setSamples(page.samples)
-      setLastDoc(page.lastDoc)
-      setHasMore(page.hasMore)
-      setSortField(page.sortField)
-      setUsers(filterJournalUsers(usersList, scope))
-      setSelectedId(page.samples[0]?.id ?? null)
-    } catch (error) {
-      console.error("Failed to load field journal data.", error)
-      setLoadError(
-        isPermissionDenied(error)
-          ? PERMISSION_DENIED_HINT
-          : error instanceof Error
-            ? error.message
-            : "Неизвестная ошибка"
-      )
-      setSamples([])
-      setUsers([])
-      setLastDoc(null)
-      setHasMore(false)
-      setSelectedId(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const scopeKey = [
+    variant,
+    scope.role,
+    scope.userId,
+    scope.userEmail,
+    scope.organizationId,
+    scope.teammateIds.join(","),
+    monitoringFilter,
+  ].join("|")
 
   const loadMore = async () => {
     if (!hasMore || !lastDoc || loadingMore) return
@@ -111,8 +98,49 @@ export function JournalPageContent({ variant = "team" }: { variant?: "team" | "m
   }
 
   useEffect(() => {
-    void loadFirstPage()
-  }, [user?.uid, monitoringFilter, scope, variant])
+    if (orgLoading || !user?.uid) return
+    let cancelled = false
+
+    const run = async () => {
+      setIsLoading(true)
+      setLoadError(null)
+      try {
+        const [page, usersList] = await Promise.all([
+          fetchJournalFirstPage(listFilters, scope),
+          getJournalUsers().catch(() => [] as JournalUser[]),
+        ])
+        if (cancelled) return
+        setSamples(page.samples)
+        setLastDoc(page.lastDoc)
+        setHasMore(page.hasMore)
+        setSortField(page.sortField)
+        setUsers(filterJournalUsers(usersList, scope))
+        setSelectedId(page.samples[0]?.id ?? null)
+      } catch (error) {
+        if (cancelled) return
+        console.error("Failed to load field journal data.", error)
+        setLoadError(
+          isPermissionDenied(error)
+            ? PERMISSION_DENIED_HINT
+            : error instanceof Error
+              ? error.message
+              : "Неизвестная ошибка"
+        )
+        setSamples([])
+        setUsers([])
+        setLastDoc(null)
+        setHasMore(false)
+        setSelectedId(null)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [orgLoading, user?.uid, scopeKey])
 
   const usersById = useMemo(() => {
     const map = new Map<string, JournalUser>()
@@ -357,7 +385,9 @@ export function JournalPageContent({ variant = "team" }: { variant?: "team" | "m
                   ) : filteredSamples.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="border px-3 py-6 text-center text-muted-foreground">
-                        Записи не найдены
+                        {variant === "mine"
+                          ? "Ваших проб пока нет. Войдите тем же аккаунтом, что в приложении."
+                          : "Записи не найдены"}
                       </td>
                     </tr>
                   ) : (

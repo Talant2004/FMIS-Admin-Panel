@@ -40,6 +40,18 @@ service cloud.firestore {
       return resource.data.organizationId == null && userOrgId() == 'kazniizirk';
     }
 
+    function ownsSample() {
+      return request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.keys().hasAny(['uid']) && resource.data.uid == request.auth.uid) ||
+        (
+          request.auth.token.email is string &&
+          resource.data.keys().hasAny(['userEmail']) &&
+          resource.data.userEmail == request.auth.token.email
+        )
+      );
+    }
+
     function teamPairId(otherUid) {
       return request.auth.uid < otherUid
         ? request.auth.uid + '_' + otherUid
@@ -103,9 +115,9 @@ service cloud.firestore {
     match /samples/{sampleId} {
       allow read: if request.auth != null && (
         isPlatformAdmin() ||
+        ownsSample() ||
         (isOrgAdmin() && legacyKazniizirkSample()) ||
         (sameOrg(resource.data.organizationId) && userRole() == 'org_admin') ||
-        (userDocExists() && resource.data.userId == request.auth.uid) ||
         (userDocExists() && isAcceptedTeammate(resource.data.userId))
       );
 

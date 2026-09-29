@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
-import { fetchOrganization, fetchUserOrgProfile } from "@/lib/org/firestore-org"
+import { ensureUserOrgProfile, fetchOrganization, fetchUserOrgProfile } from "@/lib/org/firestore-org"
 import { buildOrgScope, canCreateInspectors, showKostanayMeteo, withTeammates } from "@/lib/org/org-scope"
 import type { OrgScope, Organization, UserOrgProfile } from "@/lib/org/types"
 import { KAZNIIZIRK_ORG_ID } from "@/lib/org/constants"
@@ -48,18 +48,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
     setLoading(true)
     try {
-      let prof = await fetchUserOrgProfile(user.uid)
+      const prof = await ensureUserOrgProfile(
+        { uid: user.uid, email: user.email, displayName: user.displayName },
+        isAdmin
+      ).catch(() => fetchUserOrgProfile(user.uid))
       const orgId = prof?.organizationId ?? (isAdmin ? KAZNIIZIRK_ORG_ID : null)
-
-      if (!prof && isAdmin) {
-        prof = {
-          uid: user.uid,
-          email: user.email ?? undefined,
-          displayName: user.displayName ?? undefined,
-          organizationId: KAZNIIZIRK_ORG_ID,
-          role: "platform_admin",
-        }
-      }
 
       setProfile(prof)
       if (orgId) {
@@ -88,10 +81,13 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   }, [authLoading, refresh])
 
   const scope = useMemo(() => {
-    const base = buildOrgScope(profile, organization, isAdmin)
+    const base = buildOrgScope(profile, organization, isAdmin, {
+      uid: user?.uid,
+      email: user?.email ?? profile?.email,
+    })
     if (!profile || base.role !== "inspector") return base
     return withTeammates(base, acceptedTeammateIds(teamLinks, profile.uid))
-  }, [profile, organization, isAdmin, teamLinks])
+  }, [profile, organization, isAdmin, teamLinks, user?.uid, user?.email])
 
   const value = useMemo(
     (): OrgContextValue => ({

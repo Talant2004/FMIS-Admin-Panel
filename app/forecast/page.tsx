@@ -65,7 +65,7 @@ export default function ForecastPage() {
 
 function ForecastPageContent() {
   const { user, isAdmin } = useAuth()
-  const { scope } = useOrg()
+  const { scope, loading: orgLoading } = useOrg()
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
@@ -81,6 +81,7 @@ function ForecastPageContent() {
   const geoApplied = useRef(false)
 
   useEffect(() => {
+    if (orgLoading) return
     let cancelled = false
     clearJournalSamplesCache()
     setFieldsLoading(true)
@@ -116,7 +117,7 @@ function ForecastPageContent() {
     return () => {
       cancelled = true
     }
-  }, [user?.uid, scope])
+  }, [user?.uid, orgLoading, scope.role, scope.userId, scope.organizationId, scope.userEmail])
 
   useEffect(() => {
     if (geoApplied.current || fields.length === 0) return
