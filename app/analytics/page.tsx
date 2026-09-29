@@ -451,7 +451,7 @@ export default function AnalyticsPage() {
       <Navigation />
       <RequireAuth
         title="Вход для аналитики"
-        description="Аналитика строится по записям полевого журнала. Войдите через Google."
+        description="Аналитика строится по записям полевого журнала. Войдите через Google, как в приложении."
       >
         <AnalyticsPageContent />
       </RequireAuth>

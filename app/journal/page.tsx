@@ -568,7 +568,7 @@ export default function JournalPage() {
       <Navigation />
       <RequireAuth
         title="Вход в полевой журнал"
-        description="Коллекции samples и users защищены правилами Firebase. Войдите через Google."
+        description="Коллекции samples и users защищены правилами Firebase. Войдите через Google, как в приложении."
       >
         <JournalPageContent />
       </RequireAuth>

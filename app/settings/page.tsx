@@ -35,7 +35,7 @@ export default function SettingsPage() {
         ) : (
           <SignInPanel
             title="Войдите в панель"
-            description="Зарегистрируйтесь по email или войдите — без Google."
+            description="Если в приложении вход через Google — здесь тоже Google, без пароля."
           />
         )}
 

@@ -2,10 +2,13 @@
 
 import {
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut as firebaseSignOut,
   updateProfile,
   type User,
@@ -20,7 +23,7 @@ import {
   type ReactNode,
 } from "react"
 import { isAdminEmail } from "@/lib/auth/admin"
-import { mapAuthError } from "@/lib/auth/errors"
+import { authErrorCode, mapAuthError } from "@/lib/auth/errors"
 import { getAuthClient } from "@/lib/firebase"
 
 type AuthContextValue = {
@@ -39,11 +42,17 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 const googleProvider = new GoogleAuthProvider()
 googleProvider.setCustomParameters({ prompt: "select_account" })
+googleProvider.addScope("email")
+googleProvider.addScope("profile")
+
+const GOOGLE_REDIRECT_FALLBACK = new Set([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/internal-error",
+])
 
 function authErrorFromUnknown(err: unknown): string {
-  const code =
-    err && typeof err === "object" && "code" in err ? String((err as { code: string }).code) : ""
-  return mapAuthError(code)
+  return mapAuthError(authErrorCode(err))
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -53,18 +62,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const auth = getAuthClient()
-    const unsub = onAuthStateChanged(auth, (next) => {
-      setUser(next)
-      setLoading(false)
-    })
-    return unsub
+    let unsub = () => {}
+
+    const start = async () => {
+      try {
+        await getRedirectResult(auth)
+      } catch (err: unknown) {
+        setAuthError(authErrorFromUnknown(err))
+      }
+
+      unsub = onAuthStateChanged(auth, (next) => {
+        setUser(next)
+        setLoading(false)
+      })
+    }
+
+    void start()
+    return () => unsub()
   }, [])
 
   const signInWithGoogle = useCallback(async () => {
     setAuthError(null)
+    const auth = getAuthClient()
     try {
-      await signInWithPopup(getAuthClient(), googleProvider)
+      await signInWithPopup(auth, googleProvider)
     } catch (err: unknown) {
+      const code = authErrorCode(err)
+      if (GOOGLE_REDIRECT_FALLBACK.has(code)) {
+        await signInWithRedirect(auth, googleProvider)
+        return
+      }
       setAuthError(authErrorFromUnknown(err))
       throw err
     }
@@ -72,9 +99,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setAuthError(null)
+    const trimmed = email.trim()
     try {
-      await signInWithEmailAndPassword(getAuthClient(), email.trim(), password)
+      await signInWithEmailAndPassword(getAuthClient(), trimmed, password)
     } catch (err: unknown) {
+      const code = authErrorCode(err)
+      if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+        try {
+          const methods = await fetchSignInMethodsForEmail(getAuthClient(), trimmed)
+          if (methods.includes("google.com") && !methods.includes("password")) {
+            setAuthError(
+              "Этот аккаунт создан через Google в приложении. Пароль не нужен — нажмите «Войти через Google»."
+            )
+            throw err
+          }
+        } catch (inner) {
+          if (inner === err) throw err
+        }
+      }
       setAuthError(authErrorFromUnknown(err))
       throw err
     }

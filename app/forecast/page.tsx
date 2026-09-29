@@ -55,7 +55,7 @@ export default function ForecastPage() {
       <Navigation />
       <RequireAuth
         title="Вход для прогноза"
-        description="Прогноз строится по точкам полевого журнала. Нужен вход через Google."
+        description="Прогноз строится по точкам полевого журнала. Войдите через Google, как в приложении."
       >
         <ForecastPageContent />
       </RequireAuth>
