@@ -11,7 +11,7 @@ import {
 } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
 import { ensureUserOrgProfile, fetchOrganization, fetchUserOrgProfile } from "@/lib/org/firestore-org"
-import { buildOrgScope, canCreateInspectors, showKostanayMeteo, withTeammates } from "@/lib/org/org-scope"
+import { buildOrgScope, canCreateInspectors, withTeammates } from "@/lib/org/org-scope"
 import type { OrgScope, Organization, UserOrgProfile } from "@/lib/org/types"
 import { KAZNIIZIRK_ORG_ID } from "@/lib/org/constants"
 import { acceptedTeammateIds, fetchMyTeamLinks } from "@/lib/team/firestore-teams"
@@ -25,7 +25,6 @@ type OrgContextValue = {
   loading: boolean
   refresh: () => Promise<void>
   canCreateInspectors: boolean
-  showKostanayMeteo: boolean
 }
 
 const OrgContext = createContext<OrgContextValue | null>(null)
@@ -98,7 +97,6 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       loading: authLoading || loading,
       refresh,
       canCreateInspectors: canCreateInspectors(scope),
-      showKostanayMeteo: showKostanayMeteo(scope),
     }),
     [profile, organization, scope, teamLinks, authLoading, loading, refresh]
   )

@@ -2,26 +2,22 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useOrg } from "@/components/auth/org-provider"
 import { UserMenu } from "@/components/auth/user-menu"
 import { cn } from "@/lib/utils"
 import { BookOpen, NotebookPen, Users, CloudSun, BarChart3, Settings, Wheat, Radio } from "lucide-react"
 
-const baseNavItems = [
+const navItems = [
   { label: "Журнал", href: "/journal", icon: BookOpen, exact: true },
   { label: "Мой журнал", href: "/journal/my", icon: NotebookPen },
   { label: "Инспекторы", href: "/inspectors", icon: Users },
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
   { label: "Аналитика", href: "/analytics", icon: BarChart3 },
   { label: "Метеостанция", href: "/meteostation", icon: Radio, exact: true },
-  { label: "Костанай Метеостанция", href: "/meteostation/kostanay", icon: Radio, kostanayOnly: true },
   { label: "Настройки", href: "/settings", icon: Settings },
 ]
 
 export function Navigation() {
   const currentPath = usePathname()
-  const { showKostanayMeteo } = useOrg()
-  const navItems = baseNavItems.filter((item) => !item.kostanayOnly || showKostanayMeteo)
 
   return (
     <nav className="border-b border-border bg-background">

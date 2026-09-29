@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     await db.collection("organizations").doc(orgId).set({
       name: companyName,
       slug: orgId,
-      features: { kostanayMeteo: false },
+      features: {},
       createdAt: now,
     })
 

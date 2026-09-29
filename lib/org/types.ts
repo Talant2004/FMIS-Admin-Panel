@@ -1,9 +1,7 @@
 export const ORG_ROLES = ["platform_admin", "org_admin", "inspector"] as const
 export type OrgRole = (typeof ORG_ROLES)[number]
 
-export interface OrganizationFeatures {
-  kostanayMeteo?: boolean
-}
+export interface OrganizationFeatures {}
 
 export interface Organization {
   id: string

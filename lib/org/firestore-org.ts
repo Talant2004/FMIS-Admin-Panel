@@ -5,20 +5,12 @@ import type { Organization, UserOrgProfile } from "@/lib/org/types"
 
 type FirestoreValue = unknown
 
-function isRecord(value: FirestoreValue): value is Record<string, FirestoreValue> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
 function readString(value: FirestoreValue): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
 export function parseOrganization(id: string, data: Record<string, FirestoreValue>): Organization {
-  const featuresRaw = data.features
-  const features =
-    isRecord(featuresRaw) && typeof featuresRaw.kostanayMeteo === "boolean"
-      ? { kostanayMeteo: featuresRaw.kostanayMeteo }
-      : {}
+  const features: Organization["features"] = {}
 
   return {
     id,
