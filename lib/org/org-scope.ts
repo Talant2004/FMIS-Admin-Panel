@@ -54,8 +54,12 @@ export function canCreateInspectors(scope: OrgScope): boolean {
 }
 
 export function showKostanayMeteo(scope: OrgScope): boolean {
+  if (scope.role === "inspector") return false
   if (scope.role === "platform_admin") return true
-  return Boolean(scope.organization?.features?.kostanayMeteo)
+  if (scope.role === "org_admin") {
+    return Boolean(scope.organization?.features?.kostanayMeteo)
+  }
+  return false
 }
 
 export function withTeammates(scope: OrgScope, teammateIds: string[]): OrgScope {

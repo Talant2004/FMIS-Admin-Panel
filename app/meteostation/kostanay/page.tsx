@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Navigation } from "@/components/navigation"
+import { RequireAuth } from "@/components/auth/require-auth"
+import { useOrg } from "@/components/auth/org-provider"
+import { getAuthClient } from "@/lib/firebase"
 import type { FieldClimateReading, FieldClimateSensor } from "@/lib/fieldclimate"
 import {
   Thermometer,
@@ -67,13 +70,32 @@ function timeSince(iso: string) {
 }
 
 export default function KostanayMeteoPage() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Navigation />
+      <RequireAuth
+        title="Вход для Костанайской метеостанции"
+        description="Раздел доступен только администратору."
+      >
+        <KostanayMeteoContent />
+      </RequireAuth>
+    </div>
+  )
+}
+
+function KostanayMeteoContent() {
+  const { showKostanayMeteo, loading: orgLoading } = useOrg()
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastFetch, setLastFetch] = useState<Date | null>(null)
 
   const load = useCallback(async () => {
+    if (!showKostanayMeteo) return
     try {
-      const res = await fetch("/api/meteostation/kostanay")
+      const token = await getAuthClient().currentUser?.getIdToken()
+      const res = await fetch("/api/meteostation/kostanay", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       const json = (await res.json()) as ApiResponse
       setData(json)
       setLastFetch(new Date())
@@ -82,13 +104,40 @@ export default function KostanayMeteoPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showKostanayMeteo])
 
   useEffect(() => {
-    load()
-    const id = setInterval(load, 300_000)
+    if (orgLoading) return
+    if (!showKostanayMeteo) {
+      setLoading(false)
+      return
+    }
+    void load()
+    const id = setInterval(() => void load(), 300_000)
     return () => clearInterval(id)
-  }, [load])
+  }, [load, orgLoading, showKostanayMeteo])
+
+  if (orgLoading || loading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center text-sm text-muted-foreground">
+        Загрузка…
+      </div>
+    )
+  }
+
+  if (!showKostanayMeteo) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center space-y-2">
+        <h1 className="text-lg font-semibold">Нет доступа</h1>
+        <p className="text-sm text-muted-foreground">
+          Костанайская метеостанция доступна только администратору.
+        </p>
+        <Link href="/meteostation" className="inline-block text-sm text-green-700 underline">
+          К общей метеостанции
+        </Link>
+      </div>
+    )
+  }
 
   const latest = data?.latest ?? null
   const online =
@@ -96,10 +145,7 @@ export default function KostanayMeteoPage() {
     Date.now() - new Date(latest.date.replace(" ", "T") + "Z").getTime() < 7_200_000
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <Link
@@ -267,6 +313,5 @@ export default function KostanayMeteoPage() {
           </div>
         )}
       </div>
-    </div>
   )
 }
