@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useOrg } from "@/components/auth/org-provider"
 import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
 import { AlertBanner } from "@/components/forecast/AlertBanner"
@@ -64,6 +65,7 @@ export default function ForecastPage() {
 
 function ForecastPageContent() {
   const { user, isAdmin } = useAuth()
+  const { scope } = useOrg()
   const [fields, setFields] = useState<Field[]>([])
   const [selectedField, setSelectedField] = useState<Field | null>(null)
   const [fieldSamples, setFieldSamples] = useState<JournalSample[]>([])
@@ -85,7 +87,7 @@ function ForecastPageContent() {
     setFieldsError(null)
     ;(async () => {
       try {
-        const allSamples = await loadJournalSamplesCache()
+        const allSamples = await loadJournalSamplesCache(scope)
         if (cancelled) return
         setJournalStats({
           total: allSamples.length,
@@ -114,7 +116,7 @@ function ForecastPageContent() {
     return () => {
       cancelled = true
     }
-  }, [user?.uid])
+  }, [user?.uid, scope])
 
   useEffect(() => {
     if (geoApplied.current || fields.length === 0) return

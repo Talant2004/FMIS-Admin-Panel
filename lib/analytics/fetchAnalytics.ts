@@ -2,6 +2,8 @@ import { getJournalUsers } from "@/lib/firestore-journal"
 import { enrichSamplesWithInspectors } from "@/lib/journal/inspectors"
 import { fetchDailySummaries, summariesToTimeline, type DailySummaryDoc } from "@/lib/analytics/daily-summaries"
 import { fetchJournalSamples } from "@/lib/journal/samples"
+import type { OrgScope } from "@/lib/org/types"
+import { filterJournalUsers } from "@/lib/journal/org-filters"
 import type {
   AnalyticsSummary,
   ArchiveWeatherPoint,
@@ -32,12 +34,17 @@ function detectionRows(sample: RawSample): { name: string; damageLevel: number }
 }
 
 /** Все точки полевого журнала за период (с email инспектора из users). */
-export async function fetchAllSamples(days = 90, maxDocs = 500): Promise<RawSample[]> {
+export async function fetchAllSamples(
+  days = 90,
+  maxDocs = 500,
+  scope?: OrgScope | null
+): Promise<RawSample[]> {
   const [samples, users] = await Promise.all([
-    fetchJournalSamples(days, maxDocs),
+    fetchJournalSamples(days, maxDocs, scope),
     getJournalUsers().catch(() => []),
   ])
-  return enrichSamplesWithInspectors(samples, users)
+  const scopedUsers = filterJournalUsers(users, scope ?? null)
+  return enrichSamplesWithInspectors(samples, scopedUsers)
 }
 
 export interface AnalyticsBundle {
@@ -47,15 +54,19 @@ export interface AnalyticsBundle {
 }
 
 /** Сводки из `daily_summaries` + ограниченная выборка `samples` для ИФН/heatmap. */
-export async function fetchAnalyticsBundle(days = 90): Promise<AnalyticsBundle> {
+export async function fetchAnalyticsBundle(
+  days = 90,
+  scope?: OrgScope | null
+): Promise<AnalyticsBundle> {
   const [summaries, users] = await Promise.all([
     fetchDailySummaries(days),
     getJournalUsers().catch(() => []),
   ])
   const sampleCap = Math.min(500, Math.max(100, days))
+  const scopedUsers = filterJournalUsers(users, scope ?? null)
   const samples = enrichSamplesWithInspectors(
-    await fetchJournalSamples(days, sampleCap),
-    users
+    await fetchJournalSamples(days, sampleCap, scope),
+    scopedUsers
   )
   return {
     samples,

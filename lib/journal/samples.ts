@@ -10,6 +10,9 @@ import {
 } from "@/lib/journal/probe-parse"
 import type { Field } from "@/lib/forecast/types"
 import type { ProbeDetection } from "@/lib/journal/probe-parse"
+import { filterJournalSamples } from "@/lib/journal/org-filters"
+import type { OrgScope } from "@/lib/org/types"
+import { scopeToJournalFilters } from "@/lib/journal/org-filters"
 
 export interface JournalSample {
   id: string
@@ -20,6 +23,7 @@ export interface JournalSample {
   damageLevel: number
   lat?: number
   lng?: number
+  organizationId?: string
   fieldId?: string
   enterpriseId?: string
   photo?: string
@@ -80,6 +84,12 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
     damageLevel: severity,
     lat,
     lng,
+    organizationId:
+      typeof data.organizationId === "string"
+        ? data.organizationId
+        : typeof data.orgId === "string"
+          ? data.orgId
+          : undefined,
     fieldId:
       typeof data.fieldId === "string"
         ? data.fieldId
@@ -110,18 +120,54 @@ export function parseJournalSample(id: string, data: Record<string, FirestoreVal
 }
 
 /** Все записи полевого журнала за период (коллекция `samples`). */
-export async function fetchJournalSamples(days = 365, maxDocs = 500): Promise<JournalSample[]> {
+export async function fetchJournalSamples(
+  days = 365,
+  maxDocs = 500,
+  scope?: OrgScope | null
+): Promise<JournalSample[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)
   since.setHours(0, 0, 0, 0)
 
   const col = collection(getDb(), "samples")
   const sinceTs = Timestamp.fromDate(since)
+  const orgFilters = scopeToJournalFilters(scope ?? null)
+  const orgId = orgFilters.organizationId
+  const userId = orgFilters.userId
 
   const queries = [
-    () => query(col, where("date", ">=", sinceTs), orderBy("date", "desc"), limit(maxDocs)),
-    () => query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
-    () => query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
+    () =>
+      orgId
+        ? query(
+            col,
+            where("organizationId", "==", orgId),
+            ...(userId ? [where("userId", "==", userId)] : []),
+            where("date", ">=", sinceTs),
+            orderBy("date", "desc"),
+            limit(maxDocs)
+          )
+        : query(col, where("date", ">=", sinceTs), orderBy("date", "desc"), limit(maxDocs)),
+    () =>
+      orgId
+        ? query(
+            col,
+            where("organizationId", "==", orgId),
+            ...(userId ? [where("userId", "==", userId)] : []),
+            where("createdAt", ">=", sinceTs),
+            orderBy("createdAt", "desc"),
+            limit(maxDocs)
+          )
+        : query(col, where("createdAt", ">=", sinceTs), orderBy("createdAt", "desc"), limit(maxDocs)),
+    () =>
+      orgId
+        ? query(
+            col,
+            where("organizationId", "==", orgId),
+            ...(userId ? [where("userId", "==", userId)] : []),
+            orderBy("createdAt", "desc"),
+            limit(maxDocs)
+          )
+        : query(col, orderBy("createdAt", "desc"), limit(maxDocs)),
     () => query(col, orderBy("date", "desc"), limit(maxDocs)),
     () => query(col, limit(maxDocs)),
     () => query(col),
@@ -130,15 +176,18 @@ export async function fetchJournalSamples(days = 365, maxDocs = 500): Promise<Jo
   for (const build of queries) {
     try {
       const snap = await getDocs(build())
-      const samples = snap.docs.map((doc) =>
+      let samples = snap.docs.map((doc) =>
         parseJournalSample(doc.id, doc.data() as Record<string, FirestoreValue>)
       )
       if (samples.length === 0) continue
 
-      return samples
-        .filter((s) => s.date >= since)
-        .sort((a, b) => b.date.getTime() - a.date.getTime())
-        .slice(0, maxDocs)
+      samples = filterJournalSamples(
+        samples
+          .filter((s) => s.date >= since)
+          .sort((a, b) => b.date.getTime() - a.date.getTime()),
+        scope ?? null
+      )
+      return samples.slice(0, maxDocs)
     } catch {
       continue
     }

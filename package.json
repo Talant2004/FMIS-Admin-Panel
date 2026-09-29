@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "backup:export": "node scripts/export-firestore-backup.mjs",
     "backup:import": "node scripts/import-firestore-backup.mjs",
-    "migrate:journal": "node scripts/migrate-to-journal.mjs"
+    "migrate:journal": "node scripts/migrate-to-journal.mjs",
+    "migrate:orgs": "node scripts/migrate-orgs.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

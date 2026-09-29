@@ -4,20 +4,25 @@ import {
   samplesForField,
   type JournalSample,
 } from "@/lib/journal/samples"
+import type { OrgScope } from "@/lib/org/types"
 import type { Field } from "./types"
 
 export type { JournalSample as FieldSample }
 
 let cachedSamples: JournalSample[] | null = null
+let cachedScopeKey = ""
 
-export async function loadJournalSamplesCache(): Promise<JournalSample[]> {
-  if (cachedSamples) return cachedSamples
-  cachedSamples = await fetchJournalSamples(365, 500)
+export async function loadJournalSamplesCache(scope?: OrgScope | null): Promise<JournalSample[]> {
+  const scopeKey = scope?.organizationId ?? scope?.role ?? "all"
+  if (cachedSamples && cachedScopeKey === scopeKey) return cachedSamples
+  cachedSamples = await fetchJournalSamples(365, 500, scope)
+  cachedScopeKey = scopeKey
   return cachedSamples
 }
 
 export function clearJournalSamplesCache(): void {
   cachedSamples = null
+  cachedScopeKey = ""
 }
 
 export async function fetchSamplesForField(field: Field): Promise<JournalSample[]> {

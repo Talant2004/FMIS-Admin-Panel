@@ -33,6 +33,12 @@ function isAdmin() {
 
 Обычный пользователь Google видит только **свои** записи (`userId == auth.uid`).
 
+## Мульти-организации
+
+Актуальные правила с `organizationId` и ролями: [`firestore.rules`](../firestore.rules) и [FIRESTORE_RULES_ORGS.md](FIRESTORE_RULES_ORGS.md).
+
+Миграция существующих данных: `npm run migrate:orgs` (нужен Firebase Admin в `.env.local`).
+
 ## Переменные окружения
 
 ```env

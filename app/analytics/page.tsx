@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useOrg } from "@/components/auth/org-provider"
 import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
 import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
@@ -62,6 +63,7 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 function AnalyticsPageContent() {
   const { user } = useAuth()
+  const { scope } = useOrg()
   const [mode, setMode] = useState<"overview" | "detailed">("overview")
   const [dateRange, setDateRange] = useState(30)
   const [groupBy, setGroupBy] = useState<"day" | "week">("day")
@@ -85,7 +87,7 @@ function AnalyticsPageContent() {
     setLoading(true)
     setError(null)
 
-    fetchAnalyticsBundle(dateRange)
+    fetchAnalyticsBundle(dateRange, scope)
       .then((bundle) => {
         if (!cancelled) {
           setSamples(bundle.samples)
@@ -118,7 +120,7 @@ function AnalyticsPageContent() {
     return () => {
       cancelled = true
     }
-  }, [dateRange, user?.uid])
+  }, [dateRange, user?.uid, scope])
 
   const { farms, crops } = useMemo(() => uniqueFarmsAndCrops(samples), [samples])
   const qc = useMemo(() => calcQcMetrics(samples, enterprises), [samples, enterprises])

@@ -1,8 +1,10 @@
+import type { OrgRole } from "@/lib/org/types"
 import type { ProbeDetection } from "@/lib/journal/probe-parse"
 
 export interface FieldSample {
   id: string
   userId?: string
+  organizationId?: string
   latitude?: number
   longitude?: number
   pest?: string
@@ -37,5 +39,7 @@ export interface JournalUser {
   id: string
   email?: string
   displayName?: string
+  organizationId?: string
+  role?: OrgRole
   fields: Record<string, string>
 }

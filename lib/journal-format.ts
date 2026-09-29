@@ -154,6 +154,7 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
     monitoringType: meta.monitoringType,
     researchDiscipline: meta.researchDiscipline,
     farmingName: meta.farmingName,
+    organizationId: pickFirstString(data, ["organizationId", "orgId", "organization_id"]),
     variety: meta.variety,
     cropStage: meta.cropStage,
     userEmail: meta.userEmail,
@@ -173,10 +174,17 @@ export function parseSampleFromFirestore(id: string, data: Record<string, Firest
 
 export function parseUserFromFirestore(id: string, data: Record<string, FirestoreValue>): JournalUser {
   const fields = flattenFirestoreData(data)
+  const roleRaw = pickFirstString(data, ["role"])
+  const role =
+    roleRaw === "platform_admin" || roleRaw === "org_admin" || roleRaw === "inspector"
+      ? roleRaw
+      : undefined
   return {
     id,
     email: pickFirstString(data, ["email", "mail"]),
     displayName: pickFirstString(data, ["displayName", "name", "fullName", "username"]),
+    organizationId: pickFirstString(data, ["organizationId", "orgId"]),
+    role,
     fields,
   }
 }

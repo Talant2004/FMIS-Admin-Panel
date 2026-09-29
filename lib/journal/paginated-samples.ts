@@ -13,12 +13,16 @@ import {
 import { getDb } from "@/lib/firebase"
 import { parseSampleFromFirestore } from "@/lib/journal-format"
 import type { FieldSample } from "@/lib/journal-types"
+import { filterFieldSamples, scopeToJournalFilters } from "@/lib/journal/org-filters"
+import type { OrgScope } from "@/lib/org/types"
 
 export const JOURNAL_PAGE_SIZE = 50
 
 export type JournalListFilters = {
   monitoringType?: string
   farmingName?: string
+  organizationId?: string
+  userId?: string
 }
 
 type FirestoreValue = unknown
@@ -44,6 +48,12 @@ function buildConstraints(
   }
   if (filters.farmingName?.trim()) {
     constraints.push(where("farmingName", "==", filters.farmingName.trim()))
+  }
+  if (filters.organizationId) {
+    constraints.push(where("organizationId", "==", filters.organizationId))
+  }
+  if (filters.userId) {
+    constraints.push(where("userId", "==", filters.userId))
   }
   constraints.push(orderBy(sortField, "desc"))
   if (cursor) constraints.push(startAfter(cursor))
@@ -82,6 +92,7 @@ export async function fetchJournalPage(options: {
   cursor?: QueryDocumentSnapshot<DocumentData> | null
   filters?: JournalListFilters
   sortField?: "date" | "createdAt"
+  scope?: OrgScope | null
 }): Promise<{
   samples: FieldSample[]
   lastDoc: QueryDocumentSnapshot<DocumentData> | null
@@ -89,8 +100,9 @@ export async function fetchJournalPage(options: {
   sortField: "date" | "createdAt" | "none"
 }> {
   const pageSize = options.pageSize ?? JOURNAL_PAGE_SIZE
-  const filters = options.filters ?? {}
+  const filters = { ...scopeToJournalFilters(options.scope), ...(options.filters ?? {}) }
   const cursor = options.cursor ?? undefined
+  const scope = options.scope ?? null
   const preferredSort = options.sortField
 
   const sortAttempts: Array<"date" | "createdAt" | "none"> = preferredSort
@@ -108,7 +120,9 @@ export async function fetchJournalPage(options: {
 
       const docs = await runQuery(buildConstraints(sort, filters, pageSize, cursor))
       if (docs.length === 0) continue
-      return { ...pageResult(docs, pageSize), sortField: sort }
+      const page = pageResult(docs, pageSize)
+      page.samples = filterFieldSamples(page.samples, scope)
+      return { ...page, sortField: sort }
     } catch {
       continue
     }
@@ -128,11 +142,14 @@ export async function fetchJournalPage(options: {
   return { samples: [], lastDoc: null, hasMore: false, sortField: "none" }
 }
 
-export async function fetchJournalFirstPage(filters?: JournalListFilters): Promise<{
+export async function fetchJournalFirstPage(
+  filters?: JournalListFilters,
+  scope?: OrgScope | null
+): Promise<{
   samples: FieldSample[]
   lastDoc: QueryDocumentSnapshot<DocumentData> | null
   hasMore: boolean
   sortField: "date" | "createdAt" | "none"
 }> {
-  return fetchJournalPage({ filters, pageSize: JOURNAL_PAGE_SIZE })
+  return fetchJournalPage({ filters, pageSize: JOURNAL_PAGE_SIZE, scope })
 }

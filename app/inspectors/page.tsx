@@ -2,17 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useOrg } from "@/components/auth/org-provider"
+import { CreateInspectorPanel, RegisterCompanyPanel } from "@/components/inspectors/org-admin-panels"
 import { RequireAuth } from "@/components/auth/require-auth"
 import { InspectorsSummaryCards, InspectorsTable } from "@/components/inspectors/inspectors-table"
 import { Navigation } from "@/components/navigation"
 import { Input } from "@/components/ui/input"
 import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
 import { getJournalUsers } from "@/lib/firestore-journal"
+import { filterJournalUsers } from "@/lib/journal/org-filters"
 import { buildInspectorProfiles, type InspectorProfile } from "@/lib/journal/inspectors-list"
 import { fetchJournalSamples } from "@/lib/journal/samples"
 
 function InspectorsPageContent() {
   const { user } = useAuth()
+  const { scope, canCreateInspectors, organization, loading: orgLoading } = useOrg()
   const [inspectors, setInspectors] = useState<InspectorProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -23,10 +27,11 @@ function InspectorsPageContent() {
     setLoading(true)
     setError(null)
 
-    Promise.all([fetchJournalSamples(365, 1000), getJournalUsers().catch(() => [])])
+    Promise.all([fetchJournalSamples(365, 1000, scope), getJournalUsers().catch(() => [])])
       .then(([samples, users]) => {
         if (cancelled) return
-        setInspectors(buildInspectorProfiles(samples, users))
+        const scopedUsers = filterJournalUsers(users, scope)
+        setInspectors(buildInspectorProfiles(samples, scopedUsers))
       })
       .catch((err) => {
         if (cancelled) return
@@ -44,7 +49,17 @@ function InspectorsPageContent() {
     return () => {
       cancelled = true
     }
-  }, [user?.uid])
+  }, [user?.uid, scope])
+
+  const reloadInspectors = () => {
+    if (!user) return
+    setLoading(true)
+    Promise.all([fetchJournalSamples(365, 1000, scope), getJournalUsers().catch(() => [])])
+      .then(([samples, users]) => {
+        setInspectors(buildInspectorProfiles(samples, filterJournalUsers(users, scope)))
+      })
+      .finally(() => setLoading(false))
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -61,9 +76,15 @@ function InspectorsPageContent() {
         <h1 className="text-2xl font-semibold">Инспекторы</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Список полевых инспекторов и их статистика осмотров
+          {organization?.name ? ` · ${organization.name}` : ""}
           {!loading && inspectors.length > 0 && ` · ${inspectors.length} инспекторов`}
         </p>
       </div>
+
+      {!user && !orgLoading ? <RegisterCompanyPanel /> : null}
+      {user && canCreateInspectors ? (
+        <CreateInspectorPanel onCreated={reloadInspectors} />
+      ) : null}
 
       {error ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { useAuth } from "@/components/auth/auth-provider"
+import { useOrg } from "@/components/auth/org-provider"
 import { RequireAuth } from "@/components/auth/require-auth"
 import { Navigation } from "@/components/navigation"
 import { isPermissionDenied, PERMISSION_DENIED_HINT } from "@/lib/auth/firestore-error"
@@ -20,6 +21,7 @@ import {
 import type { DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 import { damageBadgeClass, formatSampleDate } from "@/lib/journal-format"
 import { monitoringTypeLabel } from "@/lib/journal/probe-parse"
+import { filterJournalUsers, scopeToJournalFilters } from "@/lib/journal/org-filters"
 import type { FieldSample, JournalUser } from "@/lib/journal-types"
 
 const JournalMap = dynamic(
@@ -29,6 +31,7 @@ const JournalMap = dynamic(
 
 function JournalPageContent() {
   const { user } = useAuth()
+  const { scope } = useOrg()
   const [samples, setSamples] = useState<FieldSample[]>([])
   const [users, setUsers] = useState<JournalUser[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -44,9 +47,10 @@ function JournalPageContent() {
 
   const listFilters: JournalListFilters = useMemo(
     () => ({
+      ...scopeToJournalFilters(scope),
       monitoringType: monitoringFilter || undefined,
     }),
-    [monitoringFilter]
+    [monitoringFilter, scope]
   )
 
   const loadFirstPage = async () => {
@@ -54,14 +58,14 @@ function JournalPageContent() {
     setLoadError(null)
     try {
       const [page, usersList] = await Promise.all([
-        fetchJournalFirstPage(listFilters),
+        fetchJournalFirstPage(listFilters, scope),
         getJournalUsers(),
       ])
       setSamples(page.samples)
       setLastDoc(page.lastDoc)
       setHasMore(page.hasMore)
       setSortField(page.sortField)
-      setUsers(usersList)
+      setUsers(filterJournalUsers(usersList, scope))
       setSelectedId(page.samples[0]?.id ?? null)
       if (page.samples.length === 0 && usersList.length > 0) {
         setLoadError(
@@ -96,6 +100,7 @@ function JournalPageContent() {
         filters: listFilters,
         pageSize: JOURNAL_PAGE_SIZE,
         sortField: sortField === "none" ? undefined : sortField,
+        scope,
       })
       setSortField(page.sortField)
       setSamples((prev) => [...prev, ...page.samples])
@@ -110,7 +115,7 @@ function JournalPageContent() {
 
   useEffect(() => {
     void loadFirstPage()
-  }, [user?.uid, monitoringFilter])
+  }, [user?.uid, monitoringFilter, scope])
 
   const usersById = useMemo(() => {
     const map = new Map<string, JournalUser>()

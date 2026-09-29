@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from "@/components/auth/auth-provider"
+import { OrgProvider } from "@/components/auth/org-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import './globals.css'
@@ -41,8 +42,10 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <AuthProvider>
-            {children}
-            <Toaster />
+            <OrgProvider>
+              {children}
+              <Toaster />
+            </OrgProvider>
           </AuthProvider>
           <Analytics />
         </ThemeProvider>
