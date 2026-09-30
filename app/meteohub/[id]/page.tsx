@@ -80,12 +80,25 @@ function relayLabel(data: StationSourceData): string {
   return mode ? `${state} · ${mode}` : state
 }
 
-function SourceCard({ id, data }: { id: StationSourceId; data: StationSourceData | undefined }) {
+function SourceCard({
+  id,
+  data,
+  seenTs,
+}: {
+  id: StationSourceId
+  data: StationSourceData | undefined
+  seenTs: number | undefined
+}) {
   if (!data) {
     return (
       <div className="rounded-xl border border-dashed bg-card p-4 text-sm text-muted-foreground">
-        <div className="mb-1 font-semibold text-foreground">{STATION_SOURCE_LABELS[id]}</div>
-        Нет данных
+        <div className="mb-1 font-semibold" style={{ color: SOURCE_COLORS[id] }}>
+          {STATION_SOURCE_LABELS[id]}
+        </div>
+        <p>Не прислал данных в последней передаче</p>
+        <p className="mt-1 text-xs">
+          {seenTs ? `Последний раз на связи: ${formatTs(seenTs, "week")}` : "Ещё ни разу не выходил на связь"}
+        </p>
       </div>
     )
   }
@@ -187,7 +200,7 @@ function StationChart({ readings, range }: { readings: StationReading[]; range: 
                 name={`${STATION_SOURCE_LABELS[source]}, ${meta.unit}`}
                 stroke={SOURCE_COLORS[source]}
                 strokeWidth={2}
-                dot={false}
+                dot={data.length <= 24}
                 connectNulls
               />
             ))}
@@ -302,7 +315,12 @@ function StationContent({ id }: { id: string }) {
         <>
           <div className="grid gap-3 md:grid-cols-3">
             {STATION_SOURCES.map((source) => (
-              <SourceCard key={source} id={source} data={station.last[source]} />
+              <SourceCard
+                key={source}
+                id={source}
+                data={station.last[source]}
+                seenTs={station.sourceSeen[source]}
+              />
             ))}
           </div>
 

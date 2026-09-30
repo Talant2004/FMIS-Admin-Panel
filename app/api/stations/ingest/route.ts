@@ -38,13 +38,21 @@ export async function POST(request: Request) {
       receivedAt: FieldValue.serverTimestamp(),
     })
 
-    const prevTs = (await station.ref.get()).get("lastTs") ?? 0
-    const update: Record<string, unknown> = { lastSeen: FieldValue.serverTimestamp() }
+    const snap = await station.ref.get()
+    const prevTs = snap.get("lastTs") ?? 0
+    const prevSeen = (snap.get("sourceSeen") ?? {}) as Record<string, number>
+    const sourceSeen = { ...prevSeen }
+    for (const id of Object.keys(sources)) {
+      if (!(sourceSeen[id] >= ts)) sourceSeen[id] = ts
+    }
+
+    const update: Record<string, unknown> = { lastSeen: FieldValue.serverTimestamp(), sourceSeen }
     if (ts >= prevTs) {
       update.lastTs = ts
       update.last = sources
     }
-    await station.ref.set(update, { merge: true })
+    // mergeFields заменяет `last` целиком: иначе молчащие узлы сохраняют старые значения.
+    await station.ref.set(update, { mergeFields: Object.keys(update) })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

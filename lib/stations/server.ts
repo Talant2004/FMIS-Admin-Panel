@@ -104,6 +104,17 @@ export function pickSources(raw: unknown): StationSources {
   return sources
 }
 
+function pickSourceSeen(raw: unknown): StationSummary["sourceSeen"] {
+  const seen: StationSummary["sourceSeen"] = {}
+  if (!raw || typeof raw !== "object") return seen
+  const record = raw as Record<string, unknown>
+  for (const id of STATION_SOURCES) {
+    const value = toNumber(record[id])
+    if (value !== null) seen[id] = value
+  }
+  return seen
+}
+
 export function serializeStation(id: string, data: Record<string, unknown>): StationSummary {
   return {
     id,
@@ -116,6 +127,7 @@ export function serializeStation(id: string, data: Record<string, unknown>): Sta
     lastSeen: toIso(data.lastSeen),
     lastTs: toNumber(data.lastTs),
     last: pickSources(data.last),
+    sourceSeen: pickSourceSeen(data.sourceSeen),
     lastPhotoUrl: typeof data.lastPhotoUrl === "string" ? data.lastPhotoUrl : null,
     lastPhotoTs: toNumber(data.lastPhotoTs),
   }

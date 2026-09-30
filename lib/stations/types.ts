@@ -39,6 +39,8 @@ export type StationSummary = {
   lastSeen: string | null
   lastTs: number | null
   last: StationSources
+  /** Unix-время последней записи, в которой был каждый источник. */
+  sourceSeen: Partial<Record<StationSourceId, number>>
   lastPhotoUrl: string | null
   lastPhotoTs: number | null
 }
