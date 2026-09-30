@@ -56,19 +56,19 @@ export async function createAuthUser(email: string, password: string, displayNam
   })
 }
 
-export async function uploadMeteostationPhoto(
-  cycleId: string,
+export async function uploadStorageFile(
+  objectPath: string,
   bytes: Buffer,
+  contentType = "image/jpeg",
 ): Promise<string> {
   const bucket = getStorage(getAdminApp()).bucket()
   const token = randomUUID()
-  const objectPath = `meteostation/${cycleId}/pano-${Date.now()}.jpg`
   const file = bucket.file(objectPath)
 
   await file.save(bytes, {
     resumable: false,
     metadata: {
-      contentType: "image/jpeg",
+      contentType,
       cacheControl: "public,max-age=31536000,immutable",
       metadata: { firebaseStorageDownloadTokens: token },
     },
@@ -77,4 +77,11 @@ export async function uploadMeteostationPhoto(
   return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(
     bucket.name,
   )}/o/${encodeURIComponent(objectPath)}?alt=media&token=${token}`
+}
+
+export async function uploadMeteostationPhoto(
+  cycleId: string,
+  bytes: Buffer,
+): Promise<string> {
+  return uploadStorageFile(`meteostation/${cycleId}/pano-${Date.now()}.jpg`, bytes)
 }

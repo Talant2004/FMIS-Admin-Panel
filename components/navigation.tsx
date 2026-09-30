@@ -2,22 +2,26 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useOrg } from "@/components/auth/org-provider"
 import { UserMenu } from "@/components/auth/user-menu"
 import { cn } from "@/lib/utils"
-import { BookOpen, NotebookPen, Users, CloudSun, BarChart3, Settings, Wheat, Radio } from "lucide-react"
+import { BookOpen, NotebookPen, Users, CloudSun, BarChart3, Settings, Wheat, Radio, SatelliteDish } from "lucide-react"
 
-const navItems = [
+const allNavItems = [
   { label: "Журнал", href: "/journal", icon: BookOpen, exact: true },
   { label: "Мой журнал", href: "/journal/my", icon: NotebookPen },
   { label: "Инспекторы", href: "/inspectors", icon: Users },
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
   { label: "Аналитика", href: "/analytics", icon: BarChart3 },
-  { label: "Метеостанция", href: "/meteostation", icon: Radio, exact: true },
+  { label: "Метеостанция", href: "/meteostation", icon: Radio, exact: true, adminOnly: true },
+  { label: "МетеоХаб", href: "/meteohub", icon: SatelliteDish, adminOnly: true },
   { label: "Настройки", href: "/settings", icon: Settings },
 ]
 
 export function Navigation() {
   const currentPath = usePathname()
+  const { isAdmin } = useOrg()
+  const navItems = allNavItems.filter((item) => !item.adminOnly || isAdmin)
 
   return (
     <nav className="border-b border-border bg-background">

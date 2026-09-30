@@ -1,7 +1,9 @@
 ﻿"use client"
 
+import Link from "next/link"
 import { useEffect, useState, useCallback } from "react"
 import { Navigation } from "@/components/navigation"
+import { RequireAdmin } from "@/components/auth/require-admin"
 import type { MeteoReading } from "@/lib/meteostation-types"
 import {
   LineChart,
@@ -28,6 +30,7 @@ import {
   Camera,
   ExternalLink,
   ImageOff,
+  Plus,
 } from "lucide-react"
 
 function fmt1(n: number | null | undefined) {
@@ -159,6 +162,17 @@ interface RpiPhoto {
 }
 
 export default function MeteoStationPage() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Navigation />
+      <RequireAdmin title="Вход в метеостанцию" description="Раздел доступен администраторам.">
+        <MeteoStationContent />
+      </RequireAdmin>
+    </div>
+  )
+}
+
+function MeteoStationContent() {
   const [readings,    setReadings]    = useState<MeteoReading[]>([])
   const [loading,     setLoading]     = useState(true)
   const [lastFetch,   setLastFetch]   = useState<Date | null>(null)
@@ -215,9 +229,6 @@ export default function MeteoStationPage() {
   const tab = CHART_TABS.find(c => c.id === activeChart)!
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Navigation />
-
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
 
         {/* header */}
@@ -235,6 +246,13 @@ export default function MeteoStationPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              href="/meteohub?add=1"
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+            >
+              <Plus size={12} />
+              Добавить метеостанцию
+            </Link>
             {latest && (
               <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${
                 online
@@ -481,6 +499,5 @@ export default function MeteoStationPage() {
         )}
 
       </div>
-    </div>
   )
 }

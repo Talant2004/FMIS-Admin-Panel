@@ -25,6 +25,8 @@ type OrgContextValue = {
   loading: boolean
   refresh: () => Promise<void>
   canCreateInspectors: boolean
+  /** Метеостанции и МетеоХаб: org_admin и platform_admin. */
+  isAdmin: boolean
 }
 
 const OrgContext = createContext<OrgContextValue | null>(null)
@@ -97,6 +99,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       loading: authLoading || loading,
       refresh,
       canCreateInspectors: canCreateInspectors(scope),
+      isAdmin: scope.role === "org_admin" || scope.role === "platform_admin",
     }),
     [profile, organization, scope, teamLinks, authLoading, loading, refresh]
   )
