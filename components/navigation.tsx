@@ -14,7 +14,7 @@ const allNavItems = [
   { label: "Прогноз", href: "/forecast", icon: CloudSun },
   { label: "Аналитика", href: "/analytics", icon: BarChart3 },
   { label: "Метеостанция", href: "/meteostation", icon: Radio, exact: true, adminOnly: true },
-  { label: "МетеоХаб", href: "/meteohub", icon: SatelliteDish, adminOnly: true },
+  { label: "МетеоХаб", href: "/meteohub", icon: SatelliteDish },
   { label: "Настройки", href: "/settings", icon: Settings },
 ]
 

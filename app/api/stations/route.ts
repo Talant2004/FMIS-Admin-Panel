@@ -1,24 +1,31 @@
 import { NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin-server"
-import { requireStationAdmin, serializeStation } from "@/lib/stations/server"
+import { requireStationUser, serializeStation } from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   try {
-    const admin = await requireStationAdmin(request)
-    if ("error" in admin) return admin.error
+    const user = await requireStationUser(request)
+    if ("error" in user) return user.error
 
     const col = getAdminFirestore().collection("stations")
-    const snap =
-      admin.role === "platform_admin"
-        ? await col.get()
-        : await col.where("organizationId", "==", admin.organizationId ?? "__none__").get()
+    const snaps =
+      user.role === "platform_admin"
+        ? [await col.get()]
+        : await Promise.all([
+            col.where("ownerUid", "==", user.uid).get(),
+            ...(user.role === "org_admin" && user.organizationId
+              ? [col.where("organizationId", "==", user.organizationId).get()]
+              : []),
+          ])
 
-    const stations = snap.docs
-      .map((doc) => serializeStation(doc.id, doc.data()))
-      .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+    const byId = new Map<string, ReturnType<typeof serializeStation>>()
+    for (const snap of snaps) {
+      for (const doc of snap.docs) byId.set(doc.id, serializeStation(doc.id, doc.data()))
+    }
+    const stations = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"))
 
     return NextResponse.json({ stations })
   } catch (err) {

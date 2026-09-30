@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Suspense, useCallback, useEffect, useState, type FormEvent } from "react"
 import { KeyRound, Plus, RefreshCw, Wifi, WifiOff } from "lucide-react"
 import { Navigation } from "@/components/navigation"
-import { RequireAdmin } from "@/components/auth/require-admin"
+import { RequireAuth } from "@/components/auth/require-auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -185,7 +185,7 @@ function MeteoHubContent() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">МетеоХаб</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">Метеостанции MeteoNew, привязанные по ключу</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Ваши метеостанции MeteoNew, привязанные по ключу</p>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
@@ -231,11 +231,11 @@ export default function MeteoHubPage() {
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
-      <RequireAdmin title="Вход в МетеоХаб" description="Раздел доступен администраторам.">
+      <RequireAuth title="Вход в МетеоХаб" description="Войдите, чтобы привязать метеостанцию по ключу.">
         <Suspense fallback={null}>
           <MeteoHubContent />
         </Suspense>
-      </RequireAdmin>
+      </RequireAuth>
     </main>
   )
 }

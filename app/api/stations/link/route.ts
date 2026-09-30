@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore } from "@/lib/firebase-admin-server"
-import { requireStationAdmin, sha256Hex, STATION_ID_RE } from "@/lib/stations/server"
+import { requireStationUser, sha256Hex, STATION_ID_RE, userCanSeeStation } from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 
@@ -14,8 +14,8 @@ function optionalCoord(value: unknown, min: number, max: number): number | null 
 
 export async function POST(request: Request) {
   try {
-    const admin = await requireStationAdmin(request)
-    if ("error" in admin) return admin.error
+    const user = await requireStationUser(request)
+    if ("error" in user) return user.error
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
     const stationId = String(body.station_id ?? "").trim().toUpperCase()
@@ -37,14 +37,8 @@ export async function POST(request: Request) {
     const db = getAdminFirestore()
     const ref = db.collection("stations").doc(stationId)
     const snap = await ref.get()
-    const existingOrg = snap.get("organizationId")
-    if (
-      snap.exists &&
-      admin.role !== "platform_admin" &&
-      existingOrg &&
-      existingOrg !== admin.organizationId
-    ) {
-      return NextResponse.json({ error: "Станция уже привязана к другой организации" }, { status: 409 })
+    if (snap.exists && snap.get("ownerUid") && !userCanSeeStation(user, snap.data())) {
+      return NextResponse.json({ error: "Станция уже привязана к другому аккаунту" }, { status: 409 })
     }
 
     await ref.set(
@@ -52,8 +46,8 @@ export async function POST(request: Request) {
         name: name || stationId,
         lat,
         lng,
-        ownerUid: admin.uid,
-        organizationId: existingOrg ?? admin.organizationId ?? null,
+        ownerUid: snap.get("ownerUid") ?? user.uid,
+        organizationId: snap.get("organizationId") ?? user.organizationId ?? null,
         keyHash: sha256Hex(key),
         enabled: true,
         createdAt: snap.exists ? snap.get("createdAt") ?? FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),

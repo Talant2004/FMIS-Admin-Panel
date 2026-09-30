@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin-server"
 import {
-  adminCanSeeStation,
   pickSources,
-  requireStationAdmin,
+  requireStationUser,
   serializeStation,
+  userCanSeeStation,
 } from "@/lib/stations/server"
 import { STATION_RANGES, type StationRange, type StationReading } from "@/lib/stations/types"
 
@@ -22,12 +22,12 @@ const MAX_POINTS = 300
 const MAX_DOCS = 10000
 
 async function loadStation(request: Request, id: string) {
-  const admin = await requireStationAdmin(request)
-  if ("error" in admin) return { error: admin.error }
+  const user = await requireStationUser(request)
+  if ("error" in user) return { error: user.error }
 
   const ref = getAdminFirestore().collection("stations").doc(id)
   const snap = await ref.get()
-  if (!snap.exists || !adminCanSeeStation(admin, snap.get("organizationId"))) {
+  if (!snap.exists || !userCanSeeStation(user, snap.data())) {
     return { error: NextResponse.json({ error: "Станция не найдена" }, { status: 404 }) }
   }
   return { ref, snap }

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { ArrowLeft, Camera, ExternalLink, MapPin, RefreshCw, Trash2, Wifi, WifiOff } from "lucide-react"
 import { Navigation } from "@/components/navigation"
-import { RequireAdmin } from "@/components/auth/require-admin"
+import { RequireAuth } from "@/components/auth/require-auth"
 import { Button } from "@/components/ui/button"
 import { deleteStation, fetchStationDetail, setStationEnabled } from "@/lib/stations/client"
 import {
@@ -399,9 +399,9 @@ export default function StationPage() {
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
-      <RequireAdmin title="Вход в МетеоХаб" description="Раздел доступен администраторам.">
+      <RequireAuth title="Вход в МетеоХаб" description="Войдите, чтобы открыть метеостанцию.">
         <StationContent id={id} />
-      </RequireAdmin>
+      </RequireAuth>
     </main>
   )
 }

@@ -34,15 +34,15 @@ export async function authStation(request: Request): Promise<StationAuthOk | { e
   return { db, ref, stationId }
 }
 
-export type StationAdmin = {
+export type StationUser = {
   uid: string
-  role: "platform_admin" | "org_admin"
+  role: "platform_admin" | "org_admin" | "inspector"
   organizationId: string | null
 }
 
-export async function requireStationAdmin(
+export async function requireStationUser(
   request: Request,
-): Promise<StationAdmin | { error: NextResponse }> {
+): Promise<StationUser | { error: NextResponse }> {
   let decoded
   try {
     decoded = await verifyIdTokenFromHeader(request.headers.get("authorization"))
@@ -54,16 +54,19 @@ export async function requireStationAdmin(
   const role = String(snap.get("role") ?? "")
   const organizationId = snap.get("organizationId") ? String(snap.get("organizationId")) : null
 
-  if (role === "org_admin") return { uid: decoded.uid, role: "org_admin", organizationId }
-  if (role === "platform_admin" || isAdminEmail(decoded.email)) {
+  if (role === "platform_admin" || (role !== "org_admin" && isAdminEmail(decoded.email))) {
     return { uid: decoded.uid, role: "platform_admin", organizationId }
   }
-  return { error: NextResponse.json({ error: "Доступно только администратору" }, { status: 403 }) }
+  if (role === "org_admin") return { uid: decoded.uid, role: "org_admin", organizationId }
+  return { uid: decoded.uid, role: "inspector", organizationId }
 }
 
-export function adminCanSeeStation(admin: StationAdmin, organizationId: unknown): boolean {
-  if (admin.role === "platform_admin") return true
-  return Boolean(admin.organizationId) && organizationId === admin.organizationId
+/** Владелец видит свою станцию, org_admin — станции организации, platform_admin — все. */
+export function userCanSeeStation(user: StationUser, data: Record<string, unknown> | undefined): boolean {
+  if (!data) return false
+  if (user.role === "platform_admin") return true
+  if (data.ownerUid === user.uid) return true
+  return user.role === "org_admin" && Boolean(user.organizationId) && data.organizationId === user.organizationId
 }
 
 function toIso(value: unknown): string | null {
