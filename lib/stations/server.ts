@@ -2,10 +2,22 @@ import { createHash } from "node:crypto"
 import { NextResponse } from "next/server"
 import type { DocumentReference, Firestore, Timestamp } from "firebase-admin/firestore"
 import { isAdminEmail } from "@/lib/auth/admin"
-import { getAdminFirestore, verifyIdTokenFromHeader } from "@/lib/firebase-admin-server"
+import {
+  AdminNotConfiguredError,
+  getAdminFirestore,
+  verifyIdTokenFromHeader,
+} from "@/lib/firebase-admin-server"
 import { STATION_SOURCES, type StationSources, type StationSummary } from "@/lib/stations/types"
 
 export const STATION_ID_RE = /^MS-[0-9A-F]{6}$/
+
+export function stationsErrorResponse(label: string, err: unknown): NextResponse {
+  if (err instanceof AdminNotConfiguredError) {
+    return NextResponse.json({ error: err.message }, { status: 503 })
+  }
+  console.error(label, err)
+  return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+}
 
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex")

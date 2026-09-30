@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { createVerify, randomUUID } from "node:crypto"
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app"
 import { getAuth } from "firebase-admin/auth"
 import { getFirestore } from "firebase-admin/firestore"
@@ -32,7 +32,21 @@ export function getAdminApp(): App {
   return adminApp
 }
 
+export class AdminNotConfiguredError extends Error {
+  constructor() {
+    super("Сервер не настроен: на Vercel не задан ключ Firebase Admin (FIREBASE_SERVICE_ACCOUNT_JSON)")
+  }
+}
+
+export function isAdminConfigured(): boolean {
+  return Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+      (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY),
+  )
+}
+
 export function getAdminFirestore() {
+  if (!isAdminConfigured()) throw new AdminNotConfiguredError()
   return getFirestore(getAdminApp())
 }
 
@@ -40,12 +54,56 @@ export function getAdminAuth() {
   return getAuth(getAdminApp())
 }
 
-export async function verifyIdTokenFromHeader(authorization: string | null) {
+const SECURETOKEN_CERTS_URL =
+  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+
+let certCache: { certs: Record<string, string>; expiresAt: number } | null = null
+
+async function securetokenCerts(): Promise<Record<string, string>> {
+  if (certCache && certCache.expiresAt > Date.now()) return certCache.certs
+  const res = await fetch(SECURETOKEN_CERTS_URL, { cache: "no-store" })
+  if (!res.ok) throw new Error(`Google certs ${res.status}`)
+  const maxAge = Number(/max-age=(\d+)/.exec(res.headers.get("cache-control") ?? "")?.[1] ?? 3600)
+  certCache = { certs: (await res.json()) as Record<string, string>, expiresAt: Date.now() + maxAge * 1000 }
+  return certCache.certs
+}
+
+function decodeJwtPart(part: string): Record<string, unknown> {
+  return JSON.parse(Buffer.from(part, "base64url").toString("utf8"))
+}
+
+export type VerifiedIdToken = { uid: string; email?: string }
+
+/** Проверка Firebase ID token по публичным сертификатам Google — ключ Admin SDK не нужен. */
+export async function verifyIdTokenFromHeader(authorization: string | null): Promise<VerifiedIdToken> {
   if (!authorization?.startsWith("Bearer ")) {
     throw new Error("Missing Authorization bearer token")
   }
   const token = authorization.slice("Bearer ".length).trim()
-  return getAdminAuth().verifyIdToken(token)
+  const [headerPart, payloadPart, signaturePart] = token.split(".")
+  if (!headerPart || !payloadPart || !signaturePart) throw new Error("Malformed ID token")
+
+  const header = decodeJwtPart(headerPart)
+  const payload = decodeJwtPart(payloadPart)
+  const projectId = process.env.FIREBASE_PROJECT_ID ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  const now = Math.floor(Date.now() / 1000)
+
+  if (header.alg !== "RS256" || typeof header.kid !== "string") throw new Error("Bad token header")
+  if (payload.aud !== projectId || payload.iss !== `https://securetoken.google.com/${projectId}`) {
+    throw new Error("Token is for another project")
+  }
+  if (typeof payload.exp !== "number" || payload.exp <= now) throw new Error("Token expired")
+  if (typeof payload.sub !== "string" || !payload.sub) throw new Error("Token has no subject")
+
+  const cert = (await securetokenCerts())[header.kid]
+  if (!cert) throw new Error("Unknown token key")
+  const verifier = createVerify("RSA-SHA256")
+  verifier.update(`${headerPart}.${payloadPart}`)
+  if (!verifier.verify(cert, Buffer.from(signaturePart, "base64url"))) {
+    throw new Error("Bad token signature")
+  }
+
+  return { uid: payload.sub, email: typeof payload.email === "string" ? payload.email : undefined }
 }
 
 export async function createAuthUser(email: string, password: string, displayName?: string) {

@@ -4,6 +4,7 @@ import {
   pickSources,
   requireStationUser,
   serializeStation,
+  stationsErrorResponse,
   userCanSeeStation,
 } from "@/lib/stations/server"
 import { STATION_RANGES, type StationRange, type StationReading } from "@/lib/stations/types"
@@ -98,8 +99,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       readings: downsample(readings),
     })
   } catch (err) {
-    console.error("station detail:", err)
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+    return stationsErrorResponse("station detail:", err)
   }
 }
 
@@ -120,8 +120,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     await loaded.ref.set(update, { merge: true })
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("station update:", err)
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+    return stationsErrorResponse("station update:", err)
   }
 }
 
@@ -134,7 +133,6 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     await getAdminFirestore().recursiveDelete(loaded.ref)
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("station delete:", err)
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+    return stationsErrorResponse("station delete:", err)
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { uploadStorageFile } from "@/lib/firebase-admin-server"
-import { authStation } from "@/lib/stations/server"
+import { authStation, stationsErrorResponse } from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 
@@ -42,7 +42,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, url })
   } catch (err) {
-    console.error("stations photo:", err)
-    return NextResponse.json({ error: "server error" }, { status: 500 })
+    return stationsErrorResponse("stations photo:", err)
   }
 }

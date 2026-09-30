@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { FieldValue } from "firebase-admin/firestore"
-import { authStation, pickSources } from "@/lib/stations/server"
+import { authStation, pickSources, stationsErrorResponse } from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 
@@ -48,7 +48,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("stations ingest:", err)
-    return NextResponse.json({ error: "server error" }, { status: 500 })
+    return stationsErrorResponse("stations ingest:", err)
   }
 }

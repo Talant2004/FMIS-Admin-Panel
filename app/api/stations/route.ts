@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebase-admin-server"
-import { requireStationUser, serializeStation } from "@/lib/stations/server"
+import { requireStationUser, serializeStation, stationsErrorResponse } from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,7 +29,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ stations })
   } catch (err) {
-    console.error("stations list:", err)
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+    return stationsErrorResponse("stations list:", err)
   }
 }

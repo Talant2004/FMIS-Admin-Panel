@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore } from "@/lib/firebase-admin-server"
-import { requireStationUser, sha256Hex, STATION_ID_RE, userCanSeeStation } from "@/lib/stations/server"
+import {
+  requireStationUser,
+  sha256Hex,
+  STATION_ID_RE,
+  stationsErrorResponse,
+  userCanSeeStation,
+} from "@/lib/stations/server"
 
 export const runtime = "nodejs"
 
@@ -58,7 +64,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, id: stationId })
   } catch (err) {
-    console.error("stations link:", err)
-    return NextResponse.json({ error: "Ошибка сервера" }, { status: 500 })
+    return stationsErrorResponse("stations link:", err)
   }
 }
