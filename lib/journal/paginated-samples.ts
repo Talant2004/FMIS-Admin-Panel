@@ -204,10 +204,11 @@ export async function fetchJournalPage(options: {
     samples = [...samples, ...(await fetchTeammateSamples(teammateIds, pageSize))]
   }
 
-  if (samples.length === 0 && isPlatform && !cursor) {
+  if (isPlatform && !hasOwnerConstraint(filters)) {
+    const after = cursor ? [startAfter(cursor)] : []
     const docs =
-      (await runQuery([orderBy("createdAt", "desc"), limit(pageSize)])) ??
-      (await runQuery([limit(pageSize)])) ??
+      (await runQuery([orderBy("createdAt", "desc"), ...after, limit(pageSize)])) ??
+      (await runQuery([...after, limit(pageSize)])) ??
       []
     samples = docs.map(parseDoc)
     lastDoc = docs.length > 0 ? docs[docs.length - 1] : null

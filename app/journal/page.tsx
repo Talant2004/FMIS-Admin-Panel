@@ -59,8 +59,12 @@ export function JournalPageContent({ variant = "team" }: { variant?: "team" | "m
     () => ({
       ...scopeToJournalFilters(scope),
       monitoringType: monitoringFilter || undefined,
-      userId: scope.userId ?? undefined,
-      userEmail: scope.userEmail ?? user?.email?.toLowerCase() ?? undefined,
+      ...(scope.role === "inspector"
+        ? {
+            userId: scope.userId ?? undefined,
+            userEmail: scope.userEmail ?? user?.email?.toLowerCase() ?? undefined,
+          }
+        : {}),
     }),
     [monitoringFilter, scope, user?.email]
   )
