@@ -83,11 +83,13 @@ function relayLabel(data: StationSourceData): string {
 function SourceCard({
   id,
   data,
-  seenTs,
+  dataTs,
+  latestTs,
 }: {
   id: StationSourceId
   data: StationSourceData | undefined
-  seenTs: number | undefined
+  dataTs: number | undefined
+  latestTs: number | null
 }) {
   if (!data) {
     return (
@@ -95,13 +97,11 @@ function SourceCard({
         <div className="mb-1 font-semibold" style={{ color: SOURCE_COLORS[id] }}>
           {STATION_SOURCE_LABELS[id]}
         </div>
-        <p>Не прислал данных в последней передаче</p>
-        <p className="mt-1 text-xs">
-          {seenTs ? `Последний раз на связи: ${formatTs(seenTs, "week")}` : "Ещё ни разу не выходил на связь"}
-        </p>
+        Данных пока нет
       </div>
     )
   }
+  const stale = dataTs !== undefined && latestTs !== null && dataTs < latestTs
   const zone = vpdZone(data.vpd)
   const range = (min?: number | null, max?: number | null) =>
     min !== null && min !== undefined && max !== null && max !== undefined ? (
@@ -112,8 +112,16 @@ function SourceCard({
 
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="border-b px-3 py-2 text-sm font-semibold" style={{ color: SOURCE_COLORS[id] }}>
-        {STATION_SOURCE_LABELS[id]}
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <span className="text-sm font-semibold" style={{ color: SOURCE_COLORS[id] }}>
+          {STATION_SOURCE_LABELS[id]}
+        </span>
+        {dataTs !== undefined && (
+          <span className={`text-[11px] ${stale ? "text-amber-600" : "text-muted-foreground"}`}>
+            {stale ? "данные от " : ""}
+            {formatTs(dataTs, "week")}
+          </span>
+        )}
       </div>
       <div className="divide-y">
         <Metric label="Воздух" value={fmt(data.temp)} unit="°C" extra={range(data.temp_min, data.temp_max)} />
@@ -318,8 +326,9 @@ function StationContent({ id }: { id: string }) {
               <SourceCard
                 key={source}
                 id={source}
-                data={station.last[source]}
-                seenTs={station.sourceSeen[source]}
+                data={station.sourceLast[source]?.data ?? station.last[source]}
+                dataTs={station.sourceLast[source]?.ts ?? (station.last[source] ? station.lastTs ?? undefined : undefined)}
+                latestTs={station.lastTs}
               />
             ))}
           </div>

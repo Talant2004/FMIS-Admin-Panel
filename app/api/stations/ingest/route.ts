@@ -40,18 +40,16 @@ export async function POST(request: Request) {
 
     const snap = await station.ref.get()
     const prevTs = snap.get("lastTs") ?? 0
-    const prevSeen = (snap.get("sourceSeen") ?? {}) as Record<string, number>
-    const sourceSeen = { ...prevSeen }
-    for (const id of Object.keys(sources)) {
-      if (!(sourceSeen[id] >= ts)) sourceSeen[id] = ts
+    const sourceLast = { ...((snap.get("sourceLast") ?? {}) as Record<string, { ts: number; data: unknown }>) }
+    for (const [id, data] of Object.entries(sources)) {
+      if (!(sourceLast[id]?.ts > ts)) sourceLast[id] = { ts, data }
     }
 
-    const update: Record<string, unknown> = { lastSeen: FieldValue.serverTimestamp(), sourceSeen }
+    const update: Record<string, unknown> = { lastSeen: FieldValue.serverTimestamp(), sourceLast }
     if (ts >= prevTs) {
       update.lastTs = ts
       update.last = sources
     }
-    // mergeFields заменяет `last` целиком: иначе молчащие узлы сохраняют старые значения.
     await station.ref.set(update, { mergeFields: Object.keys(update) })
 
     return NextResponse.json({ ok: true })
